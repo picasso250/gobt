@@ -3,8 +3,50 @@ package gobt
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"strconv"
 )
+
+// PrintMetainfo print the metainfo
+func PrintMetainfo(m map[string]interface{}) {
+	for k, v := range m {
+		switch v := v.(type) {
+		default:
+			if k != "info" {
+				fmt.Printf("%s: ", k)
+				fmt.Printf("unexpected type %T, %v\n", v, v) // %T prints whatever type v has
+			}
+		case string, int:
+			fmt.Printf("%s: ", k)
+			fmt.Println(v)
+		}
+	}
+
+	if m["info"] == nil {
+		return
+	}
+
+	fmt.Println("=== info === ")
+
+	info := m["info"].(map[string]interface{})
+	fmt.Printf("piece length: ")
+	fmt.Println(info["piece length"])
+
+	fmt.Printf("pieces: %d length string\n", len(info["pieces"].(string)))
+
+	if info["length"] != nil {
+		fmt.Printf("length: ")
+		fmt.Println(info["length"])
+	}
+
+	if info["files"] != nil {
+		fmt.Printf("--- files ---\n")
+		for _, file := range info["files"].([]map[string]interface{}) {
+			fmt.Printf("%d ", file["length"].(int))
+			fmt.Println(file["path"].([]string))
+		}
+	}
+}
 
 // Parse 解码 bencode
 func Parse(b []byte) (interface{}, error) {

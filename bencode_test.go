@@ -1,7 +1,6 @@
 package gobt
 
 import (
-	"fmt"
 	"io/ioutil"
 	"log"
 	"reflect"
@@ -95,14 +94,11 @@ func TestRealFile(t *testing.T) {
 	if info["piece length"] == nil {
 		t.Errorf("info no piece length key")
 	}
-	fmt.Println(info["piece length"])
 	if info["pieces"] == nil {
 		t.Errorf("info no pieces key")
 	}
-	fmt.Println(len(info["pieces"].(string)))
 	if info["length"] == nil && info["files"] == nil {
 		t.Errorf("info no length and files")
 	}
-	fmt.Println(info["length"])
-	fmt.Println(info["files"])
+	PrintMetainfo(v)
 }
