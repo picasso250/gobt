@@ -1,12 +1,66 @@
 package gobt
 
 import (
+	"fmt"
 	"io/ioutil"
 	"log"
 	"reflect"
 	"testing"
 )
 
+func TestEncode(t *testing.T) {
+	str := "spam"
+	b, err := Encode(str)
+	if err != nil {
+		t.Errorf("spam encode error")
+	}
+	if string(b) != "4:spam" {
+		t.Errorf("spam encode fail")
+	}
+
+	b, err = Encode(3)
+	if err != nil {
+		t.Errorf("3 encode error")
+	}
+	if string(b) != "i3e" {
+		t.Errorf("3 encode fail")
+	}
+
+	b, err = Encode(-3)
+	if err != nil {
+		t.Errorf("-3 encode error")
+	}
+	if string(b) != "i-3e" {
+		t.Errorf("-3 encode fail")
+	}
+
+	lst := []string{"spam", "eggs"}
+	b, err = Encode(lst)
+	if err != nil {
+		fmt.Println(err)
+		t.Errorf("list encode error")
+	}
+	if string(b) != "l4:spam4:eggse" {
+		t.Errorf("list encode fail")
+	}
+
+	dictionary := map[string]interface{}{"cow": "moo", "spam": "eggs"}
+	b, err = Encode(dictionary)
+	if err != nil {
+		t.Errorf("dictionary encode error")
+	}
+	if string(b) != "d3:cow3:moo4:spam4:eggse" {
+		t.Errorf("dictionary encode fail")
+	}
+	dictionary = map[string]interface{}{"spam": []string{"a", "b"}}
+	b, err = Encode(dictionary)
+	if err != nil {
+		t.Errorf("dictionary encode error")
+	}
+	if string(b) != "d4:spaml1:a1:bee" {
+		t.Errorf("dictionary encode fail")
+	}
+}
 func TestParse(t *testing.T) {
 	var v interface{}
 	var err error

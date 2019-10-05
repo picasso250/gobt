@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"reflect"
+	"sort"
 	"strconv"
 )
 
@@ -46,6 +48,80 @@ func PrintMetainfo(m map[string]interface{}) {
 			fmt.Println(file["path"].([]string))
 		}
 	}
+	// for k := range info {
+	// 	fmt.Println(k)
+	// }
+}
+
+// Encode bencoding
+func Encode(v interface{}) ([]byte, error) {
+	switch v := v.(type) {
+	default:
+		val := reflect.ValueOf(v)
+		switch val.Kind() {
+		default:
+			return nil, errors.New("unknown type")
+		case reflect.Slice:
+			return encodeSlice(val)
+		case reflect.Map:
+			return encodeMap(val)
+		}
+	case string:
+		len := len(v)
+		lenStr := strconv.Itoa(len)
+		return []byte(lenStr + ":" + v), nil
+	case int:
+		str := strconv.Itoa(v)
+		return []byte("i" + str + "e"), nil
+	}
+}
+
+func encodeSlice(v reflect.Value) ([]byte, error) {
+	b := make([]byte, 0, v.Len())
+	b = append(b, 'l')
+	for i := 0; i < v.Len(); i++ {
+		str, err := Encode(v.Index(i).Interface())
+		if err != nil {
+			return nil, err
+		}
+		b = append(b, []byte(str)...)
+	}
+	b = append(b, 'e')
+	return b, nil
+}
+func encodeMap(v reflect.Value) ([]byte, error) {
+	b := make([]byte, 0, v.Len())
+	b = append(b, 'd')
+	m := sortMapValueByKey(v)
+	for k, v := range m {
+		kstr, err := Encode(k)
+		if err != nil {
+			return nil, err
+		}
+		b = append(b, []byte(kstr)...)
+		str, err := Encode(v)
+		if err != nil {
+			return nil, err
+		}
+		b = append(b, []byte(str)...)
+	}
+	b = append(b, 'e')
+	return b, nil
+}
+func sortMapValueByKey(m reflect.Value) (ret map[string]interface{}) {
+
+	ks := m.MapKeys()
+	keys := make([]string, 0, m.Len())
+	for _, k := range ks {
+		keys = append(keys, k.String())
+	}
+	sort.Strings(keys)
+
+	ret = map[string]interface{}{}
+	for _, k := range keys {
+		ret[k] = m.MapIndex(reflect.ValueOf(k)).Interface()
+	}
+	return
 }
 
 // Parse 解码 bencode
