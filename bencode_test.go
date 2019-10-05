@@ -1,7 +1,9 @@
 package gobt
 
 import (
-	// "fmt"
+	"fmt"
+	"io/ioutil"
+	"log"
 	"reflect"
 	"testing"
 )
@@ -70,4 +72,37 @@ func TestParse(t *testing.T) {
 	if !reflect.DeepEqual(v, rd) {
 		t.Errorf("dictionary path fail")
 	}
+
+}
+
+func TestRealFile(t *testing.T) {
+	dat, err := ioutil.ReadFile("a.torrent")
+	if err != nil {
+		log.Fatal(err)
+	}
+	vv, err := Parse(dat)
+	if err != nil {
+		t.Errorf("file parse error")
+	}
+	v := vv.(map[string]interface{})
+	if v["announce"] == nil {
+		t.Errorf("no announce key")
+	}
+	if v["info"] == nil {
+		t.Errorf("no info key")
+	}
+	info := v["info"].(map[string]interface{})
+	if info["piece length"] == nil {
+		t.Errorf("info no piece length key")
+	}
+	fmt.Println(info["piece length"])
+	if info["pieces"] == nil {
+		t.Errorf("info no pieces key")
+	}
+	fmt.Println(len(info["pieces"].(string)))
+	if info["length"] == nil && info["files"] == nil {
+		t.Errorf("info no length and files")
+	}
+	fmt.Println(info["length"])
+	fmt.Println(info["files"])
 }
