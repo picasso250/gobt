@@ -11,7 +11,7 @@ func Parse(b []byte) (interface{}, error) {
 	if len(b) == 0 {
 		return nil, errors.New("empty bencode string")
 	}
-	v, left, err := parseValue(b[1:])
+	v, left, err := parseValue(b)
 	if err != nil {
 		return v, err
 	}
@@ -22,10 +22,13 @@ func Parse(b []byte) (interface{}, error) {
 }
 
 func parseValue(b []byte) (interface{}, []byte, error) {
+	if len(b) == 0 {
+		return nil, nil, errors.New("empty value")
+	}
 	switch {
 	case '0' <= b[0] && b[0] <= '9':
 		s, left, err := parseString(b)
-		if err == nil {
+		if err != nil {
 			return nil, left, err
 		}
 		return s, left, nil
@@ -40,8 +43,8 @@ func parseValue(b []byte) (interface{}, []byte, error) {
 		if len(b) == 1 {
 			return lst, nil, errors.New("list after l no character")
 		}
-		if b[1] == 'e' && len(b) == 2 {
-			return lst, nil, nil
+		if b[1] == 'e' && len(b) >= 2 {
+			return lst, b[2:], nil
 		}
 		bt := b[1:]
 		for {
@@ -51,7 +54,7 @@ func parseValue(b []byte) (interface{}, []byte, error) {
 			}
 			bt = left
 			lst = append(lst, v)
-			if len(left) == 1 && left[1] == 'e' {
+			if len(left) >= 1 && left[0] == 'e' {
 				return lst, left[1:], nil
 			}
 		}
@@ -60,8 +63,8 @@ func parseValue(b []byte) (interface{}, []byte, error) {
 		if len(b) == 1 {
 			return m, nil, errors.New("dictionary after d no character")
 		}
-		if b[1] == 'e' && len(b) == 2 {
-			return m, nil, nil
+		if b[1] == 'e' && len(b) >= 2 {
+			return m, b[2:], nil
 		}
 		bt := b[1:]
 		for {
@@ -69,7 +72,7 @@ func parseValue(b []byte) (interface{}, []byte, error) {
 			if len(bt) == 0 {
 				return m, nil, errors.New("dictionary has no key")
 			}
-			if !('0' <= b[0] && b[0] <= '9') {
+			if !('0' <= bt[0] && bt[0] <= '9') {
 				return m, nil, errors.New("dictionary key is not string")
 			}
 			k, left, err := parseValue(bt)
@@ -78,13 +81,13 @@ func parseValue(b []byte) (interface{}, []byte, error) {
 			}
 			bt = left
 			// value
-			if len(left) == 1 && left[1] == 'e' {
+			if len(left) >= 1 && left[0] == 'e' {
 				return m, left[1:], errors.New("key has no value")
 			}
 			v, left, err := parseValue(bt)
 			m[k.(string)] = v
 			bt = left
-			if len(left) == 1 && left[1] == 'e' {
+			if len(left) >= 1 && left[0] == 'e' {
 				return m, left[1:], nil
 			}
 		}
@@ -100,7 +103,7 @@ func parseString(b []byte) (string, []byte, error) {
 	if i == 0 {
 		return "", nil, errors.New("length cannot be found in string")
 	}
-	len, err := strconv.Atoi(string(b[:i-1]))
+	len, err := strconv.Atoi(string(b[:i]))
 	if err != nil {
 		return "", nil, err
 	}
