@@ -36,11 +36,6 @@ func PrintMetainfo(m map[string]interface{}) {
 
 	fmt.Printf("pieces: %d length string\n", len(info["pieces"].(string)))
 
-	if info["length"] != nil {
-		fmt.Printf("length: ")
-		fmt.Println(info["length"])
-	}
-
 	if info["files"] != nil {
 		fmt.Printf("--- files ---\n")
 		for _, file := range info["files"].([]map[string]interface{}) {
@@ -48,9 +43,18 @@ func PrintMetainfo(m map[string]interface{}) {
 			fmt.Println(file["path"].([]string))
 		}
 	}
-	// for k := range info {
-	// 	fmt.Println(k)
-	// }
+	for k, v := range info {
+		switch v := v.(type) {
+		default:
+			fmt.Printf("%s: ", k)
+			fmt.Printf("unexpected type %T, %v\n", v, v) // %T prints whatever type v has
+		case string, int:
+			if k != "piece length" && k != "pieces" {
+				fmt.Printf("%s: ", k)
+				fmt.Println(v)
+			}
+		}
+	}
 }
 
 // Encode bencoding
