@@ -19,6 +19,8 @@ import (
 	"time"
 )
 
+const doNotBotherTracker = true // for debug use
+
 const infoHashSize = 20
 const peerIDSize = 20
 
@@ -341,13 +343,13 @@ func Download(filename string) {
 			fmt.Printf("parse announce url error: %s\n", err)
 			return
 		}
-		fmt.Println(u)
+		// fmt.Println(u)
 		if u.Scheme != "http" {
-			fmt.Printf("unsupported tracker scheme yet: %s", announce)
+			fmt.Printf("unsupported tracker scheme yet: %s\n", announce)
 			continue
 		}
 
-		keepAliveWithTracker(u, metainfo, chPeers)
+		go keepAliveWithTracker(u, metainfo, chPeers)
 	}
 
 	for {
@@ -361,6 +363,104 @@ func Download(filename string) {
 
 }
 
+func keepAliveWithTracker(u *url.URL, metainfo map[string]interface{}, chPeers chan []ipPort) {
+	q := NewTrackerRequest(metainfo["info"].(map[string]interface{})).Query()
+	u.RawQuery = q.Encode()
+	var body []byte
+	if doNotBotherTracker { // for debug
+		debugRoot := ".debug"
+		cacheFile := pathBuild(debugRoot, (u.Hostname()))
+		if _, err := os.Stat(cacheFile); err != nil {
+			errFile := pathBuild(debugRoot, (u.Hostname())+".error")
+			if _, err := os.Stat(errFile); err == nil {
+				errBytes, err := ioutil.ReadFile(errFile)
+				if err != nil {
+					log.Fatal(err)
+				}
+				fmt.Printf("last error of %s: %s\n", u.String(), string(errBytes))
+				return
+			}
+			resp, err := http.Get(u.String())
+			if err != nil {
+				fmt.Printf("GET %s error: %s\n", u.String(), err)
+				err = ioutil.WriteFile(errFile, []byte(err.Error()), 0664)
+				if err != nil {
+					log.Fatal(err)
+				}
+				return
+			}
+			defer resp.Body.Close()
+			body, err = ioutil.ReadAll(resp.Body)
+			if err != nil {
+				fmt.Printf("GET %s read error: %s\n", u.String(), err)
+				return
+			}
+			err = ioutil.WriteFile(cacheFile, body, 0664)
+			if err != nil {
+				log.Fatal(err)
+			}
+		} else {
+			fmt.Printf("cache hit %s\n", u.String())
+			body, err = ioutil.ReadFile(cacheFile)
+			if err != nil {
+				log.Fatal(err)
+			}
+		}
+	} else {
+		resp, err := http.Get(u.String())
+		if err != nil {
+			fmt.Printf("GET %s error: %s\n", u.String(), err)
+			return
+		}
+		defer resp.Body.Close()
+		body, err = ioutil.ReadAll(resp.Body)
+		if err != nil {
+			fmt.Printf("GET %s read error: %s\n", u.String(), err)
+			return
+		}
+	}
+
+	r, err := Parse(body)
+	if err != nil {
+		fmt.Printf("GET %s get %s parse error: %s\n", u.String(), string(body), err)
+		return
+	}
+	res := r.(map[string]interface{})
+	if res["failure reason"] != nil {
+		fmt.Printf("GET %s failure reason: %s\n", u.String(), res["failure reason"].(string))
+		return
+	}
+	interval := res["interval"].(int)
+	fmt.Printf("interval: %d\t(%s)\n", interval, u.String())
+
+	peers := res["peers"]
+	p := make([]ipPort, 0)
+	switch t := peers.(type) {
+	default:
+		fmt.Printf("unexpected type %T\n", t) // %T prints whatever type t has
+		return
+	case string:
+		p, err = compactPeerList(peers.(string))
+		if err != nil {
+			fmt.Printf("parse compact peer list error: %v\n", err)
+			return
+		}
+	case map[string]interface{}:
+		p, err = peerList(peers.(map[string]interface{}))
+		if err != nil {
+			fmt.Printf("parse compact peer list error: %v\n", err)
+			return
+		}
+	}
+	if len(p) != 0 {
+		chPeers <- p
+	}
+	time.Sleep(time.Duration(interval * int(time.Second)))
+	keepAliveWithTracker(u, metainfo, chPeers)
+}
+func pathBuild(path ...string) string {
+	return strings.Join(path, string([]rune([]rune{os.PathSeparator})))
+}
 func uniquePeers(peers []ipPort) []ipPort {
 	keys := make(map[uint64]bool)
 	list := []ipPort{}
@@ -373,63 +473,6 @@ func uniquePeers(peers []ipPort) []ipPort {
 	}
 	return list
 }
-func keepAliveWithTracker(u *url.URL, metainfo map[string]interface{}, chPeers chan []ipPort) {
-	q := NewTrackerRequest(metainfo["info"].(map[string]interface{})).Query()
-
-	u.RawQuery = q.Encode()
-	resp, err := http.Get(u.String())
-	if err != nil {
-		// handle error
-		fmt.Printf("GET %s error: %s\n", u.String(), err)
-		return
-	}
-	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		fmt.Printf("GET %s read error: %s\n", u.String(), err)
-		return
-	}
-	r, err := Parse(body)
-	if err != nil {
-		fmt.Printf("GET %s get %s parse error: %s", u.String(), string(body), err)
-		return
-	}
-	res := r.(map[string]interface{})
-	if res["failure reason"] != nil {
-		fmt.Printf("GET %s failure reason: %s", u.String(), res["failure reason"].(string))
-		return
-	}
-	interval := res["interval"].(int)
-	fmt.Printf("%s interval: %d\n", u.String(), interval)
-
-	peers := res["peers"]
-	switch t := peers.(type) {
-	default:
-		fmt.Printf("unexpected type %T\n", t) // %T prints whatever type t has
-		return
-	case string:
-		p, err := compactPeerList(peers.(string))
-		if err != nil {
-			fmt.Printf("parse compact peer list error: %v\n", err)
-			return
-		}
-		if len(p) != 0 {
-			chPeers <- p
-		}
-	case map[string]interface{}:
-		p, err := peerList(peers.(map[string]interface{}))
-		if err != nil {
-			fmt.Printf("parse compact peer list error: %v\n", err)
-			return
-		}
-		if len(p) != 0 {
-			chPeers <- p
-		}
-	}
-	time.Sleep(time.Duration(interval * int(time.Second)))
-	keepAliveWithTracker(u, metainfo, chPeers)
-}
-
 func compactPeerList(peers string) ([]ipPort, error) {
 	b := []byte(peers)
 	ret := make([]ipPort, 0)
@@ -551,8 +594,9 @@ func ensureFiles(info map[string]interface{}) error {
 		}
 	}
 
-	for _, file := range info["files"].([]map[string]interface{}) {
-		path := file["path"].([]string)
+	for _, file := range info["files"].([]interface{}) {
+		f := file.(map[string]interface{})
+		path := f["path"].([]interface{})
 		prefix := string(append([]rune(filename), os.PathSeparator))
 		err := ensureFileOneByPathList(prefix, path)
 		if err != nil {
@@ -575,9 +619,10 @@ func ensureFiles(info map[string]interface{}) error {
 	}
 	return nil
 }
-func ensureFileOneByPathList(rootDir string, pathList []string) error {
+func ensureFileOneByPathList(rootDir string, pathList []interface{}) error {
 	r := []rune(rootDir)
-	for i, path := range pathList {
+	for i, p := range pathList {
+		path := p.(string)
 		if i == len(pathList)-1 {
 			r = append(r, []rune(path)...)
 			filename := string(r)
@@ -803,7 +848,9 @@ func left(info map[string]interface{}) uint64 {
 func availablePort() uint16 {
 	for port := 6881; port <= 6889; port++ {
 		ln, err := net.Listen("tcp", ":"+strconv.Itoa(port))
-		defer ln.Close()
+		if ln != nil {
+			defer ln.Close()
+		}
 		if err == nil {
 			return uint16(port)
 		}
