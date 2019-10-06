@@ -22,7 +22,7 @@ import (
 const infoHashSize = 20
 const peerIDSize = 20
 
-var downloadRoot = "d:\\DOWNLOAD"
+var downloadRoot = "d:\\DOWNLOAD\\test"
 
 var byteTable = map[byte]int{
 	0:   0,
@@ -315,6 +315,8 @@ type ipPort struct {
 // Download download BT file
 func Download(filename string) {
 
+	peers := make([]ipPort, 0)
+
 	metainfo, err := parseBTFile(filename)
 	if err != nil {
 		fmt.Printf("parse bt file error: %s\n", err)
@@ -332,29 +334,47 @@ func Download(filename string) {
 		return
 	}
 	allAnnounce := getAllAnnounce(metainfo)
-
+	chPeers := make(chan []ipPort, 1)
 	for _, announce := range allAnnounce {
 		u, err := url.Parse(announce)
 		if err != nil {
 			fmt.Printf("parse announce url error: %s\n", err)
 			return
 		}
-		fmt.Println(u.Scheme)
 		fmt.Println(u)
 		if u.Scheme != "http" {
 			fmt.Printf("unsupported tracker scheme yet: %s", announce)
 			continue
 		}
 
-		chPeers := make(chan []ipPort, 1)
-		go keepAliveWithTracker(u, metainfo, chPeers)
+		keepAliveWithTracker(u, metainfo, chPeers)
+	}
 
+	for {
+		var p []ipPort
+		select {
+		case p = <-chPeers:
+			fmt.Printf("got %d peers\n", len(p))
+			peers = uniquePeers(append(peers, p...))
+		}
 	}
 
 }
 
+func uniquePeers(peers []ipPort) []ipPort {
+	keys := make(map[uint64]bool)
+	list := []ipPort{}
+	for _, entry := range peers {
+		e := uint64(entry.Port)<<32 + uint64(entry.IP)
+		if _, value := keys[e]; !value {
+			keys[e] = true
+			list = append(list, entry)
+		}
+	}
+	return list
+}
 func keepAliveWithTracker(u *url.URL, metainfo map[string]interface{}, chPeers chan []ipPort) {
-	q := NewTrackerRequest(metainfo).Query()
+	q := NewTrackerRequest(metainfo["info"].(map[string]interface{})).Query()
 
 	u.RawQuery = q.Encode()
 	resp, err := http.Get(u.String())
@@ -393,14 +413,18 @@ func keepAliveWithTracker(u *url.URL, metainfo map[string]interface{}, chPeers c
 			fmt.Printf("parse compact peer list error: %v\n", err)
 			return
 		}
-		chPeers <- p
+		if len(p) != 0 {
+			chPeers <- p
+		}
 	case map[string]interface{}:
 		p, err := peerList(peers.(map[string]interface{}))
 		if err != nil {
 			fmt.Printf("parse compact peer list error: %v\n", err)
 			return
 		}
-		chPeers <- p
+		if len(p) != 0 {
+			chPeers <- p
+		}
 	}
 	time.Sleep(time.Duration(interval * int(time.Second)))
 	keepAliveWithTracker(u, metainfo, chPeers)
@@ -474,20 +498,30 @@ func getAllAnnounce(metainfo map[string]interface{}) (ret []string) {
 		log.Fatal("no announce key")
 	}
 	if metainfo["announce-list"] != nil {
-		ret = make([]string, 0, len(metainfo["announce-list"].([]interface{})))
+		ret = make([]string, 0, len(metainfo["announce-list"].([]interface{}))+1)
 	} else {
 		ret = make([]string, 0, 1)
 	}
 	ret = append(ret, metainfo["announce"].(string))
 	if metainfo["announce-list"] != nil {
-		announceList := metainfo["announceList"].([]interface{})
+		announceList := metainfo["announce-list"].([]interface{})
 		for _, announce := range announceList {
-			ret = append(ret, announce.(string))
+			ret = append(ret, announce.([]interface{})[0].(string))
 		}
 	}
-	return ret
+	return unique(ret)
 }
-
+func unique(intSlice []string) []string {
+	keys := make(map[string]bool)
+	list := []string{}
+	for _, entry := range intSlice {
+		if _, value := keys[entry]; !value {
+			keys[entry] = true
+			list = append(list, entry)
+		}
+	}
+	return list
+}
 func parseBTFile(filename string) (map[string]interface{}, error) {
 	dat, err := ioutil.ReadFile(filename)
 	if err != nil {
