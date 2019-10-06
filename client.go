@@ -499,14 +499,16 @@ func peerList(peers map[string]interface{}) ([]ipPort, error) {
 			return ret, err
 		}
 		i := ipPort{
-			IP:   uint32(StringIpToInt(p.(map[string]interface{})["ip"].(string))),
+			IP:   uint32(StringIPToInt(p.(map[string]interface{})["ip"].(string))),
 			Port: uint16(port),
 		}
 		ret = append(ret, i)
 	}
 	return ret, nil
 }
-func StringIpToInt(ipstring string) int {
+
+// StringIPToInt string IP to int
+func StringIPToInt(ipstring string) int {
 	ipSegs := strings.Split(ipstring, ".")
 	var ipInt int = 0
 	var pos uint = 24
@@ -519,7 +521,8 @@ func StringIpToInt(ipstring string) int {
 	return ipInt
 }
 
-func IpIntToString(ipInt int) string {
+// IPIntToString IP int to string
+func IPIntToString(ipInt int) string {
 	ipSegs := make([]string, 4)
 	var len int = len(ipSegs)
 	buffer := bytes.NewBufferString("")
@@ -806,6 +809,8 @@ func announceRequest(conn *net.UDPConn, transactionID uint32, connectionID uint6
 	}
 	return nil
 }
+
+// NewTrackerRequest new a tracker request with current bt file
 func NewTrackerRequest(info map[string]interface{}) *TrackerRequest {
 	r := TrackerRequest{
 		InfoHash:   infoHash(info),
@@ -819,6 +824,8 @@ func NewTrackerRequest(info map[string]interface{}) *TrackerRequest {
 	}
 	return &r
 }
+
+// Query return http query
 func (r *TrackerRequest) Query() url.Values {
 	v := url.Values{}
 	v.Set("info_hash", string(r.InfoHash[:]))
