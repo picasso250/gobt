@@ -11,9 +11,12 @@ import (
 	"log"
 	"math/rand"
 	"net"
+	"net/http"
 	"net/url"
 	"os"
 	"strconv"
+	"strings"
+	"time"
 )
 
 const infoHashSize = 20
@@ -310,42 +313,198 @@ type ipPort struct {
 }
 
 // Download download BT file
-func Download(filename string) error {
+func Download(filename string) {
+
+	metainfo, err := parseBTFile(filename)
+	if err != nil {
+		fmt.Printf("parse bt file error: %s\n", err)
+		return
+	}
+
+	info := metainfo["info"].(map[string]interface{})
+	err = ensureFile(info)
+	if err != nil {
+		fmt.Printf("file error: %s\n", err)
+	}
+
+	if metainfo["announce"] == nil {
+		fmt.Printf("no announce key\n")
+		return
+	}
+	allAnnounce := getAllAnnounce(metainfo)
+
+	for _, announce := range allAnnounce {
+		u, err := url.Parse(announce)
+		if err != nil {
+			fmt.Printf("parse announce url error: %s\n", err)
+			return
+		}
+		fmt.Println(u.Scheme)
+		fmt.Println(u)
+		if u.Scheme != "http" {
+			fmt.Printf("unsupported tracker scheme yet: %s", announce)
+			continue
+		}
+
+		chPeers := make(chan []ipPort, 1)
+		go keepAliveWithTracker(u, metainfo, chPeers)
+
+	}
+
+}
+
+func keepAliveWithTracker(u *url.URL, metainfo map[string]interface{}, chPeers chan []ipPort) {
+	q := NewTrackerRequest(metainfo).Query()
+
+	u.RawQuery = q.Encode()
+	resp, err := http.Get(u.String())
+	if err != nil {
+		// handle error
+		fmt.Printf("GET %s error: %s\n", u.String(), err)
+		return
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Printf("GET %s read error: %s\n", u.String(), err)
+		return
+	}
+	r, err := Parse(body)
+	if err != nil {
+		fmt.Printf("GET %s get %s parse error: %s", u.String(), string(body), err)
+		return
+	}
+	res := r.(map[string]interface{})
+	if res["failure reason"] != nil {
+		fmt.Printf("GET %s failure reason: %s", u.String(), res["failure reason"].(string))
+		return
+	}
+	interval := res["interval"].(int)
+	fmt.Printf("%s interval: %d\n", u.String(), interval)
+
+	peers := res["peers"]
+	switch t := peers.(type) {
+	default:
+		fmt.Printf("unexpected type %T\n", t) // %T prints whatever type t has
+		return
+	case string:
+		p, err := compactPeerList(peers.(string))
+		if err != nil {
+			fmt.Printf("parse compact peer list error: %v\n", err)
+			return
+		}
+		chPeers <- p
+	case map[string]interface{}:
+		p, err := peerList(peers.(map[string]interface{}))
+		if err != nil {
+			fmt.Printf("parse compact peer list error: %v\n", err)
+			return
+		}
+		chPeers <- p
+	}
+	time.Sleep(time.Duration(interval * int(time.Second)))
+	keepAliveWithTracker(u, metainfo, chPeers)
+}
+
+func compactPeerList(peers string) ([]ipPort, error) {
+	b := []byte(peers)
+	ret := make([]ipPort, 0)
+	if len(b)%6 != 0 {
+		return nil, errors.New("compact peers is not 6s")
+	}
+	for i := 0; i < len(b)/6; i++ {
+		ip := int(b[i*6])*0xFFFFFF + int(b[i*6+1])*0xFFFF + int(b[i*6+2])*0xFF + int(b[i*6+3])
+		port := int(b[i*6+4])*0xFF + int(b[i*6+5])
+		i := ipPort{
+			IP:   uint32(ip),
+			Port: uint16(port),
+		}
+		ret = append(ret, i)
+	}
+	return ret, nil
+}
+
+func peerList(peers map[string]interface{}) ([]ipPort, error) {
+	ret := make([]ipPort, 0)
+	for _, p := range peers {
+		port, err := strconv.Atoi(p.(map[string]interface{})["port"].(string))
+		if err != nil {
+			return ret, err
+		}
+		i := ipPort{
+			IP:   uint32(StringIpToInt(p.(map[string]interface{})["ip"].(string))),
+			Port: uint16(port),
+		}
+		ret = append(ret, i)
+	}
+	return ret, nil
+}
+func StringIpToInt(ipstring string) int {
+	ipSegs := strings.Split(ipstring, ".")
+	var ipInt int = 0
+	var pos uint = 24
+	for _, ipSeg := range ipSegs {
+		tempInt, _ := strconv.Atoi(ipSeg)
+		tempInt = tempInt << pos
+		ipInt = ipInt | tempInt
+		pos -= 8
+	}
+	return ipInt
+}
+
+func IpIntToString(ipInt int) string {
+	ipSegs := make([]string, 4)
+	var len int = len(ipSegs)
+	buffer := bytes.NewBufferString("")
+	for i := 0; i < len; i++ {
+		tempInt := ipInt & 0xFF
+		ipSegs[len-i-1] = strconv.Itoa(tempInt)
+		ipInt = ipInt >> 8
+	}
+	for i := 0; i < len; i++ {
+		buffer.WriteString(ipSegs[i])
+		if i < len-1 {
+			buffer.WriteString(".")
+		}
+	}
+	return buffer.String()
+}
+func getAllAnnounce(metainfo map[string]interface{}) (ret []string) {
+	if metainfo["announce"] == nil {
+		log.Fatal("no announce key")
+	}
+	if metainfo["announce-list"] != nil {
+		ret = make([]string, 0, len(metainfo["announce-list"].([]interface{})))
+	} else {
+		ret = make([]string, 0, 1)
+	}
+	ret = append(ret, metainfo["announce"].(string))
+	if metainfo["announce-list"] != nil {
+		announceList := metainfo["announceList"].([]interface{})
+		for _, announce := range announceList {
+			ret = append(ret, announce.(string))
+		}
+	}
+	return ret
+}
+
+func parseBTFile(filename string) (map[string]interface{}, error) {
 	dat, err := ioutil.ReadFile(filename)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	vv, err := Parse(dat)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	v := vv.(map[string]interface{})
-	if v["announce"] == nil {
-		return errors.New("no announce key")
-	}
-	announce := v["announce"].(string)
-	u, err := url.Parse(announce)
-	if err != nil {
-		return err
-	}
-	fmt.Println(u.Scheme)
-	fmt.Println(u)
-	if u.Scheme != "udp" {
-		return errors.New("unsupported scheme")
-	}
-
-	info := v["info"].(map[string]interface{})
-	allocateFile(info)
-
-	return nil
+	return vv.(map[string]interface{}), nil
 }
 
-func allocateFile(info map[string]interface{}) error {
+func ensureFile(info map[string]interface{}) error {
 	if info["length"] == nil {
 		return ensureFiles(info)
-	} else {
-		return ensureOneFile(info)
 	}
+	return ensureOneFile(info)
 }
 func ensureFiles(info map[string]interface{}) error {
 	r := string(append([]rune(downloadRoot), os.PathSeparator))
@@ -359,7 +518,6 @@ func ensureFiles(info map[string]interface{}) error {
 	}
 
 	for _, file := range info["files"].([]map[string]interface{}) {
-		length := file["length"]
 		path := file["path"].([]string)
 		prefix := string(append([]rune(filename), os.PathSeparator))
 		err := ensureFileOneByPathList(prefix, path)
@@ -408,7 +566,6 @@ func ensureFileOneByPathList(rootDir string, pathList []string) error {
 			r = append(r, os.PathSeparator)
 		}
 	}
-	path := string(r)
 	return nil
 }
 func ensureOneFile(info map[string]interface{}) error {
@@ -465,7 +622,7 @@ func udpTracker(address string, metainfo map[string]interface{}) error {
 	announceRequest(conn, transactionID, connectionID, req)
 
 	// IPv4 announce response
-	announceResponse(conn, transactionID, connectionID)
+	announceResponse(conn, transactionID)
 	return nil
 }
 func announceResponse(conn *net.UDPConn, transactionID uint32) (*TrackerResponse, error) {
@@ -582,6 +739,16 @@ func NewTrackerRequest(info map[string]interface{}) *TrackerRequest {
 		NumWant: -1,
 	}
 	return &r
+}
+func (r *TrackerRequest) Query() url.Values {
+	v := url.Values{}
+	v.Set("info_hash", string(r.InfoHash[:]))
+	v.Set("peer_id", string(r.PeerID[:]))
+	v.Set("port", strconv.Itoa(int(r.Port)))
+	v.Set("uploaded", strconv.Itoa(int(r.Uploaded)))
+	v.Set("downloaded", strconv.Itoa(int(r.Downloaded)))
+	v.Set("left", strconv.Itoa(int(r.Left)))
+	return v
 }
 
 func left(info map[string]interface{}) uint64 {
