@@ -1,12 +1,39 @@
 package gobt
 
 import (
+	"crypto/sha1"
+	"fmt"
+	"io"
 	"io/ioutil"
+	"log"
 	"os"
 	"strings"
 )
 
+// File file
+// todo should be int64
+type File struct {
+	Length int
+	Path   []string
+}
+
+func (f *File) longPath() string {
+	return pathBuild(f.Path...)
+}
+
+// NewFileFromMap builds a File
+func NewFileFromMap(m map[string]interface{}) File {
+	return File{
+		Length: m["length"].(int),
+		Path:   stringSlice(m["path"].([]interface{})),
+	}
+}
+
 func ensureFile(info *MetainfoInfo) error {
+	if err := os.Chdir(downloadRoot); err != nil {
+		return err
+	}
+
 	if len(info.Files) != 0 {
 		return ensureFiles(info)
 	}
@@ -23,6 +50,10 @@ func ensureFiles(info *MetainfoInfo) error {
 		if err != nil {
 			return err
 		}
+	}
+
+	if err := os.Chdir(filename); err != nil {
+		return err
 	}
 
 	for _, file := range info.Files {
@@ -90,4 +121,37 @@ func ensureOneFile(info *MetainfoInfo) error {
 		}
 	}
 	return nil
+}
+func checkHash(info *MetainfoInfo, index int) bool {
+	if len(info.Files) == 0 {
+		// single file mode
+		b := make([]byte, 0, info.PieceLength)
+		file, err := os.Open(info.filename()) // For read access.
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer file.Close()
+		_, err = io.ReadFull(file, b)
+		if err != nil {
+			if err == io.ErrUnexpectedEOF {
+				// it's ok
+			} else {
+				log.Fatal(err)
+			}
+		}
+	} else {
+		// multi file mode
+		// seek to start
+		i := index
+		for _, f := range info.Files {
+			if index > 0 {
+				if index >= f.Length {
+					continue
+				}
+				os.Fopen(f.longPath())
+			}
+		}
+	}
+	data := []byte("This page intentionally left blank.")
+	fmt.Printf("% x", sha1.Sum(data))
 }
