@@ -297,9 +297,8 @@ var byteTable = map[byte]int{
 	255: 6,
 }
 
-var meChoked = true // Choking is a notification that no data will be sent until unchoking happens
-var meInterested = false
 var myPeerID peerID
+var gBitField bitfield
 var peersMap map[uint64]*peer
 var peersMapMutex sync.RWMutex
 
@@ -332,7 +331,7 @@ func Download(filename string) {
 		return
 	}
 
-	err = ensureFile(metaInfo.Info)
+	gBitField, err = ensureFile(metaInfo.Info)
 	if err != nil {
 		fmt.Printf("file error: %s\n", err)
 	}
