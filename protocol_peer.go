@@ -43,7 +43,7 @@ type peer struct {
 	Bitfield    bitfield
 }
 
-func newPeer(ip uint32, port uint16, pid peerID) *peer {
+func newPeer(ip uint32, port uint16, pid peerID, bitfieldSize int) *peer {
 	return &peer{
 		IP:     ip,
 		Port:   port,
@@ -53,7 +53,9 @@ func newPeer(ip uint32, port uint16, pid peerID) *peer {
 		AmInterested:   0,
 		PeerChoking:    1,
 		PeerInterested: 0,
-		Conn:           nil,
+
+		Conn:     nil,
+		Bitfield: allZeroBitField(bitfieldSize),
 	}
 }
 func (p *peer) Uint64() uint64 {
