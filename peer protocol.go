@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math/rand"
 	"net"
 	"time"
 )
@@ -22,6 +23,8 @@ const (
 	typePiece
 	typeCancel
 )
+
+const requestLength = uint32(1 << 14) // All current implementations use 2^14 (16 kiB)
 
 func doPeer(ipt ipPort, metainfo *Metainfo) {
 	conn, err := net.Dial("tcp4", ipt.String())
@@ -55,12 +58,56 @@ func peerMessages(conn net.Conn, info *MetainfoInfo) error {
 	if err != nil {
 		return err
 	}
-	err=sendMessage(conn, msg)
+	err = sendMessage(conn, msg)
 	if err != nil {
 		return err
 	}
 
-	
+	err = alternatingStream(conn)
+	if err != nil {
+		return err
+	}
+}
+func alternatingStream(conn net.Conn, info *MetainfoInfo) error {
+	// randomly pick a pieace to download
+	bf, err := bitfieldFromFile(info.filename())
+	if err != nil {
+		return err
+	}
+
+	index := 0
+	start := rand.Intn(info.Length)
+	cnt := info.piecesCount()
+	for i := 0; i < cnt; i++ {
+		ii := (start + i) % cnt
+		if bf.Bit(ii) == 0 {
+			index = ii
+		}
+	}
+
+	sendMessage(conn, requestMessage())
+}
+
+var pieceInnerIndex int32 = 0
+
+func requestMessage(index int32) *bytes.Buffer {
+	b := new(bytes.Buffer)
+
+	err := writeInteger(b, index)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	err = writeInteger(b, pieceInnerIndex)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	err = writeInteger(b, requestLength)
+	if err != nil {
+		log.Fatal(err)
+	}
+	return b
 }
 func sendMessage(conn net.Conn, msg *bytes.Buffer) error {
 	err := writeInteger(conn, uint32(msg.Len()))
