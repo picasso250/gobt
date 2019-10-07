@@ -154,14 +154,14 @@ func (p *peer) loop() error {
 				return err
 			}
 		case typeRequest:
-			err = p.doRequest(b)
+			err = p.doRequest(b, info)
 			if err != nil {
 				return err
 			}
 		}
 	}
 }
-func (p *peer) doRequest(b []byte) error {
+func (p *peer) doRequest(b []byte, info *MetainfoInfo) error {
 	buf := bytes.NewBuffer(b)
 	index, err := readUint32(buf)
 	if err != nil {
@@ -171,12 +171,25 @@ func (p *peer) doRequest(b []byte) error {
 	if err != nil {
 		return err
 	}
-	piece := buf.Bytes()
-	err = writeToFile(index, begin, piece)
+	length, err := readUint32(buf)
 	if err != nil {
 		return err
 	}
+	// if we have
+	if gBitField.Bit(int(index)) == 1 {
+		b, err := readSome(info, int(index), int64(begin), int64(length))
+		if err != nil {
+			return err
+		}
 
+	}
+
+	//todo move to piece
+	piece := buf.Bytes()
+	err = writeToFile(info, int(index), int64(begin), piece)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 func (p *peer) doBitfield(b []byte) error {
@@ -274,6 +287,20 @@ func requestMessage(index int32) *bytes.Buffer {
 }
 func sendMessage(conn net.Conn, msg *bytes.Buffer) error {
 	err := writeInteger(conn, uint32(msg.Len()))
+	if err != nil {
+		return err
+	}
+	n, err := msg.WriteTo(conn)
+	if err != nil {
+		return err
+	}
+	if int(n) != msg.Len() {
+		log.Fatal("write message length not enough")
+	}
+	return nil
+}
+func sendTypeMessage(conn net.Conn, t uint32, msg *bytes.Buffer) error {
+	err := writeIntegers(conn, uint32(msg.Len()+4), t)
 	if err != nil {
 		return err
 	}
