@@ -12,5 +12,5 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Printf("hello %d\n", i)
+	fmt.Printf("hello %d,%d\n", i, uint32(int32(-2)))
 }
