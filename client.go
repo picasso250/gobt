@@ -299,6 +299,7 @@ var byteTable = map[byte]int{
 
 var myPeerID peerID
 var gBitField bitfield
+var gBitFieldMutex sync.RWMutex
 var peersMap map[uint64]*peer
 var peersMapMutex sync.RWMutex
 
