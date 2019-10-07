@@ -12,9 +12,8 @@ import (
 )
 
 // File file
-// todo should be int64
 type File struct {
-	Length int
+	Length int64
 	Path   []string
 }
 
@@ -25,9 +24,84 @@ func (f *File) longPath() string {
 // NewFileFromMap builds a File
 func NewFileFromMap(m map[string]interface{}) File {
 	return File{
-		Length: m["length"].(int),
+		Length: m["length"].(int64),
 		Path:   stringSlice(m["path"].([]interface{})),
 	}
+}
+
+func writeToFile(info *MetainfoInfo, index int, offset int64, piece []byte) error {
+	offset = int64(index)*int64(info.PieceLength) + offset
+	if len(info.Files) != 0 {
+		return writeToFiles(info, offset, piece)
+	}
+	return writeToOneFile(info, offset, piece)
+}
+func writeToOneFile(info *MetainfoInfo, offset int64, piece []byte) error {
+	filename := info.filename()
+	f, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE, 0664)
+	if err != nil {
+		return err
+	}
+	_, err = f.Seek(offset, 0)
+	if err != nil {
+		return err
+	}
+
+	return writeAll(f, piece)
+}
+func writeAll(w io.Writer, b []byte) error {
+	for {
+		n, err := w.Write(b)
+		if err != nil {
+			return err
+		}
+		if n == len(b) {
+			break
+		}
+		b = b[n:]
+	}
+	return nil
+}
+func writeToFiles(info *MetainfoInfo, offset int64, piece []byte) error {
+	i, offset, err := seekStart(info.Files, offset)
+	if err != nil {
+		return err
+	}
+	return writeToFilesDo(info.Files[i:], offset, piece)
+}
+func writeToFilesDo(files []File, offset int64, piece []byte) error {
+	if len(piece) == 0 {
+		return nil
+	}
+	for _, file := range files {
+		f, err := os.OpenFile(file.longPath(), os.O_WRONLY|os.O_CREATE, 0664)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		if offset != 0 {
+			_, err = f.Seek(offset, 0)
+			if err != nil {
+				return err
+			}
+		}
+
+		var n int
+		b := piece
+		if offset+int64(len(piece)) > file.Length {
+			// 0----offset----file.Length----len(piece)
+			b = piece[:file.Length-offset]
+		}
+		err = writeAll(f, b)
+		if err != nil {
+			return err
+		}
+		piece = piece[len(b):]
+		if len(piece) == 0 {
+			break
+		}
+	}
+	return nil
 }
 
 func ensureFile(info *MetainfoInfo) (bitfield, error) {
@@ -139,12 +213,7 @@ func checkHash(info *MetainfoInfo, index int, ih hash) (bool, error) {
 	} else {
 		// multi file mode
 		// seek to start
-		fileIndex, offset, err := seekStart(info, index)
-		if err != nil {
-			return false, err
-		}
-		length := readPieceLength(info, fileIndex, offset)
-		b, err = readMuliFileBlock(info.Files[fileIndex:], int64(offset), length)
+		b, err := readSome(info, index, 0, int64(info.PieceLength))
 		if err != nil {
 			return false, err
 		}
@@ -152,9 +221,16 @@ func checkHash(info *MetainfoInfo, index int, ih hash) (bool, error) {
 	s := sha1.Sum(b)
 	return bytes.Compare(s[:], ih[:]) == 0, nil
 }
-func readPieceLength(info *MetainfoInfo, index int, offset int) int {
-	length := info.PieceLength
-	sum := 0
+func readSome(info *MetainfoInfo, index int, offset int64, length int64) ([]byte, error) {
+	fileIndex, offset, err := seekStart(info.Files, int64(index)*int64(info.PieceLength)+offset)
+	if err != nil {
+		return nil, err
+	}
+	return readMuliFileBlock(info.Files[fileIndex:], offset, length)
+}
+func readPieceLength(info *MetainfoInfo, index int, offset int64) int64 {
+	length := int64(info.PieceLength)
+	sum := int64(0)
 	for _, file := range info.Files[index:] {
 		sum += file.Length
 	}
@@ -164,17 +240,18 @@ func readPieceLength(info *MetainfoInfo, index int, offset int) int {
 	}
 	return length
 }
-func readMuliFileBlock(fileList []File, offset int64, length int) ([]byte, error) {
+func readMuliFileBlock(fileList []File, offset int64, length int64) ([]byte, error) {
 	if length <= 0 {
 		log.Fatalf("invalid length %d", length)
 	}
 	b := make([]byte, length)
-	bufStart := 0
+	bufStart := int64(0)
 	for _, file := range fileList {
 		f, err := os.Open(file.longPath())
 		if err != nil {
 			return nil, err
 		}
+		defer f.Close()
 		if offset != 0 {
 			_, err = f.Seek(offset, 0)
 			if err != nil {
@@ -187,7 +264,7 @@ func readMuliFileBlock(fileList []File, offset int64, length int) ([]byte, error
 				return nil, err
 			}
 		}
-		bufStart += n
+		bufStart += int64(n)
 		if bufStart == length-1 {
 			break
 		}
@@ -197,8 +274,8 @@ func readMuliFileBlock(fileList []File, offset int64, length int) ([]byte, error
 	}
 	return b, nil
 }
-func seekStart(info *MetainfoInfo, index int) (i int, pos int, err error) {
-	for i, f := range info.Files {
+func seekStart(files []File, index int64) (i int, pos int64, err error) {
+	for i, f := range files {
 		if index == 0 {
 			return i, 0, nil
 		}
