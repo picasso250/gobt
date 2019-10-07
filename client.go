@@ -28,12 +28,14 @@ const infoHashSize = 20
 const peerIDSize = 20
 
 // settings
-var maxPeerCount = 100
-var downloadRoot = "d:\\DOWNLOAD\\test"
+var maxPeerCount int
+var downloadRoot string
 
 func init() {
-	maxPeerCount = flag.Int("max-peer-count", 100, "how many peers to connect")
-	downloadRoot = flag.String("root", ".", "download root directory")
+	maxPeerCount = *flag.Int("max-peer-count", 100, "how many peers to connect")
+	downloadRoot = *flag.String("root", ".", "download root directory")
+
+	myPeerID = genPeerID()
 }
 
 var byteTable = map[byte]int{
@@ -297,6 +299,7 @@ var byteTable = map[byte]int{
 
 var meChoked = true // Choking is a notification that no data will be sent until unchoking happens
 var meInterested = false
+var myPeerID [peerIDSize]byte
 var peersStartedMap map[uint64]bool
 var peersStartedMapMutex sync.RWMutex
 var peersMap map[uint64]peer
@@ -330,7 +333,7 @@ type TrackerResponse struct {
 func NewTrackerRequest(mi *Metainfo) *TrackerRequest {
 	r := TrackerRequest{
 		InfoHash:   mi.InfoHash,
-		PeerID:     peerID(),
+		PeerID:     myPeerID,
 		Port:       availablePort(),
 		Uploaded:   0,
 		Downloaded: 0,
@@ -742,9 +745,7 @@ func announceRequest(conn *net.UDPConn, transactionID uint32, connectionID uint6
 }
 
 func left(info *MetainfoInfo) uint64 {
-	r := string(append([]rune(downloadRoot), os.PathSeparator))
-	infoFilename := r + info.Name + ".btinfo"
-	b, err := bitfieldFromFile(infoFilename)
+	b, err := bitfieldFromFile(info.infofilename())
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -841,7 +842,7 @@ func announceRequestBytes(conn *net.UDPConn, transactionID uint32, connectionID 
 	return buf.Bytes(), nil
 }
 
-func peerID() [peerIDSize]byte {
+func genPeerID() [peerIDSize]byte {
 	b := make([]byte, peerIDSize)
 	n, err := rand.Read(b)
 	if err != nil {
