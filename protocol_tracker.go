@@ -155,7 +155,7 @@ func keepAliveWithTracker(u *url.URL, metainfo *Metainfo, chPeers chan []ipPort)
 	fmt.Printf("interval: %d\t(%s)\n", interval, u.String())
 
 	peers := res["peers"]
-	p := make([]ipPort, 0)
+	p := make([]*peer, 0)
 	switch t := peers.(type) {
 	default:
 		fmt.Printf("unexpected type %T\n", t) // %T prints whatever type t has
@@ -173,20 +173,17 @@ func keepAliveWithTracker(u *url.URL, metainfo *Metainfo, chPeers chan []ipPort)
 			return
 		}
 	}
-	
-	if len(p)!=0 {
+
+	if len(p) != 0 {
 		peersMapMutex.Lock()
-		for _,ipt := range p{
-			if peers[ipt.Uint64()]== nil{
-				peers[ipt.Uint64()] =&peer{
-					IP:ipt.IP,
-					Port:ipt.Port,
-					peerID
-				}
+		for _, ipt := range p {
+			if peersMap[ipt.Uint64()] == nil {
+				peersMap[ipt.Uint64()] = ipt
 			}
 		}
+		peersMapMutex.Unlock()
 	}
-	
+
 	time.Sleep(time.Duration(interval * int(time.Second)))
 	go keepAliveWithTracker(u, metainfo, chPeers)
 }
