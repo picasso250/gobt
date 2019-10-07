@@ -380,9 +380,16 @@ func (i ipPort) String() string {
 }
 
 type peer struct {
-	Choked     bool
-	Interested bool
-	PeerID     [peerIDSize]byte
+	IP     uint32
+	Port   uint16
+	PeerID peerID
+	// state
+	AmChoking      uint32 // 本客户端正在choke远程peer。
+	AmInterested   uint32 // 本客户端对远程peer感兴趣。
+	PeerChoking    uint32 // 远程peer正choke本客户端。
+	PeerInterested uint32 // 远程peer对本客户端感兴趣。
+
+	pieceOffset int32
 }
 
 // Download download BT file
