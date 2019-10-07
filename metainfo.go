@@ -61,6 +61,9 @@ func (info *MetainfoInfo) filename() string {
 func (info *MetainfoInfo) infofilename() string {
 	return pathBuild(downloadRoot, info.Name+".btinfo")
 }
+func (info *MetainfoInfo) bitfield() (bitfield, error) {
+	return bitfieldFromFile(info.infofilename())
+}
 
 // File file
 // todo should be int64
@@ -76,6 +79,8 @@ func NewFileFromMap(m map[string]interface{}) File {
 		Path:   stringSlice(m["path"].([]interface{})),
 	}
 }
+
+type peerID [peerIDSize]byte
 
 func stringSlice(a []interface{}) []string {
 	b := make([]string, len(a))
