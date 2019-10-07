@@ -369,7 +369,7 @@ func uniquePeers(peers []ipPort) []ipPort {
 	}
 	return list
 }
-func compactPeerList(peers string) ([]*peer, error) {
+func compactPeerList(peers string, piecesCount int) ([]*peer, error) {
 	b := []byte(peers)
 	ret := make([]*peer, 0)
 	if len(b)%6 != 0 {
@@ -379,13 +379,13 @@ func compactPeerList(peers string) ([]*peer, error) {
 		ip := int(b[i*6])*0xFFFFFF + int(b[i*6+1])*0xFFFF + int(b[i*6+2])*0xFF + int(b[i*6+3])
 		port := int(b[i*6+4])*0xFF + int(b[i*6+5])
 		var pid peerID
-		i := newPeer(uint32(ip), uint16(port), pid)
+		i := newPeer(uint32(ip), uint16(port), pid, piecesCount)
 		ret = append(ret, i)
 	}
 	return ret, nil
 }
 
-func peerList(peers map[string]interface{}) ([]*peer, error) {
+func peerList(peers map[string]interface{}, piecesCount int) ([]*peer, error) {
 	ret := make([]*peer, 0)
 	for _, p := range peers {
 		pm := p.(map[string]interface{})
@@ -398,7 +398,7 @@ func peerList(peers map[string]interface{}) ([]*peer, error) {
 		if err != nil {
 			return ret, err
 		}
-		pp := newPeer(ip, uint16(port), pid)
+		pp := newPeer(ip, uint16(port), pid, piecesCount)
 		ret = append(ret, pp)
 	}
 	return ret, nil
