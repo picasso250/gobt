@@ -129,7 +129,7 @@ func TestParse(t *testing.T) {
 }
 
 func TestRealFile(t *testing.T) {
-	dat, err := ioutil.ReadFile("gimp-2.10.12-setup-3.exe.torrent")
+	dat, err := ioutil.ReadFile("a.torrent")
 	if err != nil {
 		log.Fatal(err)
 	}
