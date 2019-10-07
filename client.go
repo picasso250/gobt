@@ -300,8 +300,6 @@ var byteTable = map[byte]int{
 var meChoked = true // Choking is a notification that no data will be sent until unchoking happens
 var meInterested = false
 var myPeerID peerID
-var peersStartedMap map[uint64]bool
-var peersStartedMapMutex sync.RWMutex
 var peersMap map[uint64]*peer
 var peersMapMutex sync.RWMutex
 
@@ -328,48 +326,35 @@ func (i ipPort) String() string {
 // Download download BT file
 func Download(filename string) {
 
-	metainfo, err := parseBTFile(filename)
+	metaInfo, err := parseBTFile(filename)
 	if err != nil {
 		fmt.Printf("parse bt file error: %s\n", err)
 		return
 	}
 
-	err = ensureFile(metainfo.Info)
+	err = ensureFile(metaInfo.Info)
 	if err != nil {
 		fmt.Printf("file error: %s\n", err)
 	}
 
-	go trackerProtocol(metainfo)
+	go trackerProtocol(metaInfo)
 
-	go doPeers(metainfo)
-
-	for {
-		var p []ipPort
-		select {
-		case p = <-chPeers:
-			fmt.Printf("got %d peers\n", len(p))
-			peersStartedMapMutex.Lock()
-			defer peersStartedMapMutex.Unlock()
-			for _, peer := range p {
-				peersStartedMap[peer.Uint64()] = false
-			}
-		}
-	}
+	go doPeers(metaInfo)
 
 }
-func doPeers(info *Metainfo) {
+func doPeers(mi *Metainfo) {
 	// if peer not start, start it
 	// todo receive
-	peersStartedMapMutex.Lock()
-	for pInt64, started := range peersStartedMap {
-		if !started {
-			go doPeer(newIPPortFromUint64(pInt64), info)
-			peersStartedMap[pInt64] = true
+	for {
+		peersMapMutex.RLock()
+		for _, peer := range peersMap {
+			if peer.Conn == nil {
+				go doPeer(peer, mi)
+			}
 		}
+		peersMapMutex.RUnlock()
+		time.Sleep(time.Second)
 	}
-	peersStartedMapMutex.Unlock()
-	time.Sleep(time.Minute)
-	go doPeers(info)
 }
 
 func uniquePeers(peers []ipPort) []ipPort {
