@@ -302,85 +302,6 @@ var peersStartedMapMutex sync.RWMutex
 var peersMap map[uint64]peer
 var peersMapMutex sync.RWMutex
 
-// Metainfo Metainfo files (also known as .torrent files)
-type Metainfo struct {
-	Announce     string
-	AnnounceList []string
-	Info         *MetainfoInfo
-	InfoHash     [infoHashSize]byte
-	OriginData   map[string]interface{}
-}
-
-// NewMetainfoFromMap builds a Metainfo
-func NewMetainfoFromMap(m map[string]interface{}) *Metainfo {
-	info := m["info"].(map[string]interface{})
-	mi := Metainfo{
-		Announce:   m["announce"].(string),
-		Info:       NewMetainfoInfoFromMap(info),
-		InfoHash:   infoHash(info),
-		OriginData: m,
-	}
-	if m["announce-list"] != nil {
-		for _, a := range m["announce-list"].([]interface{}) {
-			mi.AnnounceList = append(mi.AnnounceList, a.([]interface{})[0].(string))
-		}
-	}
-	return &mi
-}
-
-// MetainfoInfo metainfo[info]
-// todo should be int64
-type MetainfoInfo struct {
-	Name        string
-	PieceLength int
-	Pieces      []byte
-	Length      int
-	Files       []File
-	OriginData  map[string]interface{}
-}
-
-// NewMetainfoInfoFromMap builds a map
-func NewMetainfoInfoFromMap(m map[string]interface{}) *MetainfoInfo {
-	mi := MetainfoInfo{
-		Name:        m["name"].(string),
-		PieceLength: m["piece length"].(int),
-		Pieces:      []byte(m["pieces"].(string)),
-		Length:      m["length"].(int),
-		OriginData:  m,
-	}
-	if m["files"] != nil {
-		for _, f := range m["files"].([]interface{}) {
-			mi.Files = append(mi.Files, NewFileFromMap(f.(map[string]interface{})))
-		}
-
-	}
-
-	return &mi
-}
-
-// File file
-// todo should be int64
-type File struct {
-	Length int
-	Path   []string
-}
-
-// NewFileFromMap builds a File
-func NewFileFromMap(m map[string]interface{}) File {
-	return File{
-		Length: m["length"].(int),
-		Path:   stringSlice(m["path"].([]interface{})),
-	}
-}
-
-func stringSlice(a []interface{}) []string {
-	b := make([]string, len(a))
-	for i, v := range a {
-		b[i] = v.(string)
-	}
-	return b
-}
-
 // TrackerRequest Tracker GET requests
 type TrackerRequest struct {
 	InfoHash   [infoHashSize]byte
@@ -616,9 +537,7 @@ func keepAliveWithTracker(u *url.URL, metainfo *Metainfo, chPeers chan []ipPort)
 	time.Sleep(time.Duration(interval * int(time.Second)))
 	go keepAliveWithTracker(u, metainfo, chPeers)
 }
-func pathBuild(path ...string) string {
-	return strings.Join(path, string([]rune([]rune{os.PathSeparator})))
-}
+
 func uniquePeers(peers []ipPort) []ipPort {
 	keys := make(map[uint64]bool)
 	list := []ipPort{}
@@ -721,91 +640,6 @@ func parseBTFile(filename string) (*Metainfo, error) {
 		return nil, err
 	}
 	return NewMetainfoFromMap(vv.(map[string]interface{})), nil
-}
-
-func ensureFile(info *MetainfoInfo) error {
-	if len(info.Files) != 0 {
-		return ensureFiles(info)
-	}
-	return ensureOneFile(info)
-}
-func ensureFiles(info *MetainfoInfo) error {
-	r := string(append([]rune(downloadRoot), os.PathSeparator))
-	filename := r + info.Name
-
-	if _, err := os.Stat(filename); os.IsNotExist(err) {
-		err := os.Mkdir(filename, 0664)
-		if err != nil {
-			return err
-		}
-	}
-
-	for _, file := range info.Files {
-		path := file.Path
-		prefix := string(append([]rune(filename), os.PathSeparator))
-		err := ensureFileOneByPathList(prefix, path)
-		if err != nil {
-			return err
-		}
-	}
-
-	infoFilename := r + info.Name + ".btinfo"
-	if _, err := os.Stat(infoFilename); os.IsNotExist(err) {
-		piecesCount := len([]byte(info.Pieces)) / infoHashSize
-		err := allZeroBitField(piecesCount).ToFile(infoFilename)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-func ensureFileOneByPathList(rootDir string, pathList []string) error {
-	r := []rune(rootDir)
-	for i, path := range pathList {
-		if i == len(pathList)-1 {
-			r = append(r, []rune(path)...)
-			filename := string(r)
-			if _, err := os.Stat(filename); os.IsNotExist(err) {
-				b := make([]byte, 0)
-				err := ioutil.WriteFile(filename, b, 0664)
-				if err != nil {
-					return err
-				}
-			}
-		} else {
-			r = append(r, []rune(path)...)
-			dir := string(r)
-			if _, err := os.Stat(dir); os.IsNotExist(err) {
-				err := os.Mkdir(dir, 0664)
-				if err != nil {
-					return err
-				}
-			}
-			r = append(r, os.PathSeparator)
-		}
-	}
-	return nil
-}
-func ensureOneFile(info *MetainfoInfo) error {
-	r := string(append([]rune(downloadRoot), os.PathSeparator))
-	filename := r + info.Name
-	if _, err := os.Stat(filename); os.IsNotExist(err) {
-		b := make([]byte, 0)
-		err := ioutil.WriteFile(filename, b, 0664)
-		if err != nil {
-			return err
-		}
-	}
-
-	infoFilename := r + info.Name + ".btinfo"
-	if _, err := os.Stat(infoFilename); os.IsNotExist(err) {
-		piecesCount := len([]byte(info.Pieces)) / infoHashSize
-		err := allZeroBitField(piecesCount).ToFile(infoFilename)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 func udpTracker(address string, metainfo *Metainfo) error {
