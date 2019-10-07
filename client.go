@@ -12,9 +12,6 @@ import (
 	"log"
 	"math/rand"
 	"net"
-	"net/http"
-	"net/url"
-	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -34,7 +31,7 @@ var downloadRoot string
 func init() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 
-	maxPeerCount = *flag.Int("max-peer-count", 100, "how many peers to connect")
+	maxPeerCount = *flag.Int("max-peer-count", 30, "how many peers to connect")
 	downloadRoot = *flag.String("root", ".", "download root directory")
 
 	myPeerID = genPeerID()
@@ -305,59 +302,8 @@ var meInterested = false
 var myPeerID peerID
 var peersStartedMap map[uint64]bool
 var peersStartedMapMutex sync.RWMutex
-var peersMap map[uint64]peer
+var peersMap map[uint64]*peer
 var peersMapMutex sync.RWMutex
-
-// TrackerRequest Tracker GET requests
-type TrackerRequest struct {
-	InfoHash   hash
-	PeerID     peerID
-	IP         uint32
-	Port       uint16
-	Uploaded   uint64
-	Downloaded uint64
-	Left       uint64
-	Event      uint32
-	Key        uint32
-	NumWant    int32
-}
-
-// TrackerResponse IPv4 announce response
-type TrackerResponse struct {
-	Action        uint32
-	TransactionID uint32
-	Interval      uint32
-	Leechers      uint32
-	Seeders       uint32
-	IPPort        []ipPort
-}
-
-// NewTrackerRequest new a tracker request with current bt file
-func NewTrackerRequest(mi *Metainfo) *TrackerRequest {
-	r := TrackerRequest{
-		InfoHash:   mi.InfoHash,
-		PeerID:     myPeerID,
-		Port:       availablePort(),
-		Uploaded:   0,
-		Downloaded: 0,
-		Left:       left(mi.Info),
-		// Key        uint32
-		NumWant: -1,
-	}
-	return &r
-}
-
-// Query return http query
-func (r *TrackerRequest) Query() url.Values {
-	v := url.Values{}
-	v.Set("info_hash", string(r.InfoHash[:]))
-	v.Set("peer_id", string(r.PeerID[:]))
-	v.Set("port", strconv.Itoa(int(r.Port)))
-	v.Set("uploaded", strconv.Itoa(int(r.Uploaded)))
-	v.Set("downloaded", strconv.Itoa(int(r.Downloaded)))
-	v.Set("left", strconv.Itoa(int(r.Left)))
-	return v
-}
 
 type ipPort struct {
 	IP   uint32
@@ -379,19 +325,6 @@ func (i ipPort) String() string {
 	return IPIntToString(int(i.IP)) + ":" + strconv.Itoa(int(i.Port))
 }
 
-type peer struct {
-	IP     uint32
-	Port   uint16
-	PeerID peerID
-	// state
-	AmChoking      uint32 // 本客户端正在choke远程peer。
-	AmInterested   uint32 // 本客户端对远程peer感兴趣。
-	PeerChoking    uint32 // 远程peer正choke本客户端。
-	PeerInterested uint32 // 远程peer对本客户端感兴趣。
-
-	pieceOffset int32
-}
-
 // Download download BT file
 func Download(filename string) {
 
@@ -406,22 +339,7 @@ func Download(filename string) {
 		fmt.Printf("file error: %s\n", err)
 	}
 
-	allAnnounce := getAllAnnounce(metainfo)
-	chPeers := make(chan []ipPort, 1)
-	for _, announce := range allAnnounce {
-		u, err := url.Parse(announce)
-		if err != nil {
-			fmt.Printf("parse announce url error: %s\n", err)
-			return
-		}
-		// fmt.Println(u)
-		if u.Scheme != "http" {
-			fmt.Printf("unsupported tracker scheme yet: %s\n", announce)
-			continue
-		}
-
-		go keepAliveWithTracker(u, metainfo, chPeers)
-	}
+	go trackerProtocol(metainfo)
 
 	go doPeers(metainfo)
 
@@ -439,7 +357,6 @@ func Download(filename string) {
 	}
 
 }
-
 func doPeers(info *Metainfo) {
 	// if peer not start, start it
 	// todo receive
@@ -455,102 +372,6 @@ func doPeers(info *Metainfo) {
 	go doPeers(info)
 }
 
-func keepAliveWithTracker(u *url.URL, metainfo *Metainfo, chPeers chan []ipPort) {
-	q := NewTrackerRequest(metainfo).Query()
-	u.RawQuery = q.Encode()
-	var body []byte
-	if doNotBotherTracker { // for debug
-		debugRoot := ".debug"
-		cacheFile := pathBuild(debugRoot, (u.Hostname()))
-		if _, err := os.Stat(cacheFile); err != nil {
-			errFile := pathBuild(debugRoot, (u.Hostname())+".error")
-			if _, err := os.Stat(errFile); err == nil {
-				errBytes, err := ioutil.ReadFile(errFile)
-				if err != nil {
-					log.Fatal(err)
-				}
-				fmt.Printf("last error of %s: %s\n", u.String(), string(errBytes))
-				return
-			}
-			resp, err := http.Get(u.String())
-			if err != nil {
-				fmt.Printf("GET %s error: %s\n", u.String(), err)
-				err = ioutil.WriteFile(errFile, []byte(err.Error()), 0664)
-				if err != nil {
-					log.Fatal(err)
-				}
-				return
-			}
-			defer resp.Body.Close()
-			body, err = ioutil.ReadAll(resp.Body)
-			if err != nil {
-				fmt.Printf("GET %s read error: %s\n", u.String(), err)
-				return
-			}
-			err = ioutil.WriteFile(cacheFile, body, 0664)
-			if err != nil {
-				log.Fatal(err)
-			}
-		} else {
-			fmt.Printf("cache hit %s\n", u.String())
-			body, err = ioutil.ReadFile(cacheFile)
-			if err != nil {
-				log.Fatal(err)
-			}
-		}
-	} else {
-		resp, err := http.Get(u.String())
-		if err != nil {
-			fmt.Printf("GET %s error: %s\n", u.String(), err)
-			return
-		}
-		defer resp.Body.Close()
-		body, err = ioutil.ReadAll(resp.Body)
-		if err != nil {
-			fmt.Printf("GET %s read error: %s\n", u.String(), err)
-			return
-		}
-	}
-
-	r, err := Parse(body)
-	if err != nil {
-		fmt.Printf("GET %s get %s parse error: %s\n", u.String(), string(body), err)
-		return
-	}
-	res := r.(map[string]interface{})
-	if res["failure reason"] != nil {
-		fmt.Printf("GET %s failure reason: %s\n", u.String(), res["failure reason"].(string))
-		return
-	}
-	interval := res["interval"].(int)
-	fmt.Printf("interval: %d\t(%s)\n", interval, u.String())
-
-	peers := res["peers"]
-	p := make([]ipPort, 0)
-	switch t := peers.(type) {
-	default:
-		fmt.Printf("unexpected type %T\n", t) // %T prints whatever type t has
-		return
-	case string:
-		p, err = compactPeerList(peers.(string))
-		if err != nil {
-			fmt.Printf("parse compact peer list error: %v\n", err)
-			return
-		}
-	case map[string]interface{}:
-		p, err = peerList(peers.(map[string]interface{}))
-		if err != nil {
-			fmt.Printf("parse compact peer list error: %v\n", err)
-			return
-		}
-	}
-	if len(p) != 0 {
-		chPeers <- p
-	}
-	time.Sleep(time.Duration(interval * int(time.Second)))
-	go keepAliveWithTracker(u, metainfo, chPeers)
-}
-
 func uniquePeers(peers []ipPort) []ipPort {
 	keys := make(map[uint64]bool)
 	list := []ipPort{}
@@ -563,49 +384,50 @@ func uniquePeers(peers []ipPort) []ipPort {
 	}
 	return list
 }
-func compactPeerList(peers string) ([]ipPort, error) {
+func compactPeerList(peers string) ([]*peer, error) {
 	b := []byte(peers)
-	ret := make([]ipPort, 0)
+	ret := make([]*peer, 0)
 	if len(b)%6 != 0 {
 		return nil, errors.New("compact peers is not 6s")
 	}
 	for i := 0; i < len(b)/6; i++ {
 		ip := int(b[i*6])*0xFFFFFF + int(b[i*6+1])*0xFFFF + int(b[i*6+2])*0xFF + int(b[i*6+3])
 		port := int(b[i*6+4])*0xFF + int(b[i*6+5])
-		i := ipPort{
-			IP:   uint32(ip),
-			Port: uint16(port),
-		}
+		var pid peerID
+		i := newPeer(uint32(ip), uint16(port), pid)
 		ret = append(ret, i)
 	}
 	return ret, nil
 }
 
-func peerList(peers map[string]interface{}) ([]ipPort, error) {
-	ret := make([]ipPort, 0)
+func peerList(peers map[string]interface{}) ([]*peer, error) {
+	ret := make([]*peer, 0)
 	for _, p := range peers {
-		port, err := strconv.Atoi(p.(map[string]interface{})["port"].(string))
+		pm := p.(map[string]interface{})
+		port, err := strconv.Atoi(pm["port"].(string))
 		if err != nil {
 			return ret, err
 		}
-		i := ipPort{
-			IP:   uint32(StringIPToInt(p.(map[string]interface{})["ip"].(string))),
-			Port: uint16(port),
+		ip := StringIPToInt(pm["ip"].(string))
+		pid, err := peerIDFromBytes([]byte(pm["peer id"].(string)))
+		if err != nil {
+			return ret, err
 		}
-		ret = append(ret, i)
+		pp := newPeer(ip, uint16(port), pid)
+		ret = append(ret, pp)
 	}
 	return ret, nil
 }
 
 // StringIPToInt string IP to int
-func StringIPToInt(ipstring string) int {
+func StringIPToInt(ipstring string) uint32 {
 	ipSegs := strings.Split(ipstring, ".")
-	var ipInt int = 0
+	var ipInt uint32 = 0
 	var pos uint = 24
 	for _, ipSeg := range ipSegs {
 		tempInt, _ := strconv.Atoi(ipSeg)
 		tempInt = tempInt << pos
-		ipInt = ipInt | tempInt
+		ipInt = ipInt | uint32(tempInt)
 		pos -= 8
 	}
 	return ipInt
