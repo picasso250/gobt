@@ -8,6 +8,7 @@ import (
 	"log"
 	"math/rand"
 	"net"
+	"strconv"
 	"time"
 )
 
@@ -48,6 +49,13 @@ func newPeer(ip uint32, port uint16, pid peerID) *peer {
 		PeerChoking:    1,
 		PeerInterested: 0,
 	}
+}
+func (p *peer) Uint64() uint64 {
+	return uint64(p.IP)<<32 | uint64(p.Port)
+}
+
+func (p *peer) String() string {
+	return IPIntToString(int(p.IP)) + ":" + strconv.Itoa(int(p.Port))
 }
 
 const requestLength = uint32(1 << 14) // All current implementations use 2^14 (16 kiB)
