@@ -37,6 +37,19 @@ type peer struct {
 	pieceOffset int32
 }
 
+func newPeer(ip uint32, port uint16, pid peerID) *peer {
+	return &peer{
+		IP:     ip,
+		Port:   port,
+		PeerID: pid,
+		// 客户端连接开始时状态是choke和not interested(不感兴趣)。换句话就是：
+		AmChoking:      1,
+		AmInterested:   0,
+		PeerChoking:    1,
+		PeerInterested: 0,
+	}
+}
+
 const requestLength = uint32(1 << 14) // All current implementations use 2^14 (16 kiB)
 
 func doPeer(ipt ipPort, metainfo *Metainfo) {
