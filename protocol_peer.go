@@ -35,6 +35,7 @@ type peer struct {
 	PeerChoking    uint32 // 远程peer正choke本客户端。
 	PeerInterested uint32 // 远程peer对本客户端感兴趣。
 
+	Conn        net.Conn
 	pieceOffset int32
 }
 
@@ -48,6 +49,7 @@ func newPeer(ip uint32, port uint16, pid peerID) *peer {
 		AmInterested:   0,
 		PeerChoking:    1,
 		PeerInterested: 0,
+		Conn:           nil,
 	}
 }
 func (p *peer) Uint64() uint64 {
@@ -60,27 +62,31 @@ func (p *peer) String() string {
 
 const requestLength = uint32(1 << 14) // All current implementations use 2^14 (16 kiB)
 
-func doPeer(ipt ipPort, metainfo *Metainfo) {
-	conn, err := net.Dial("tcp4", ipt.String())
+func doPeer(p *peer, metainfo *Metainfo) {
+	var err error
+	peersMapMutex.Lock()
+	p.Conn, err = net.Dial("tcp4", p.String())
+	peersMapMutex.Unlock()
 	if err != nil {
-		fmt.Printf("dial tcp %s error: %s\n", ipt.String(), err)
+		fmt.Printf("dial tcp %s error: %s\n", p.String(), err)
 		return
 	}
-	defer conn.Close()
-	err = handshake(conn, ipt, metainfo)
+	defer p.Conn.Close()
+
+	err = handshake(p.Conn, p, metainfo)
 	if err != nil {
-		fmt.Printf("%s handshake error: %s", ipt, err)
+		fmt.Printf("%s handshake error: %s", p, err)
 		return
 	}
 
 	heartBeatChan := make(chan int)
-	go heartBeat(conn, heartBeatChan)
+	go heartBeat(p.Conn, heartBeatChan)
 	defer func() {
 		// inform heart beat to stop
 		heartBeatChan <- 1
 	}()
 
-	err = peerMessages(conn, metainfo.Info)
+	err = peerMessages(p.Conn, metainfo.Info)
 	if err != nil {
 		fmt.Printf("peer messages error: %s\n", err)
 		return
@@ -97,10 +103,11 @@ func peerMessages(conn net.Conn, info *MetainfoInfo) error {
 		return err
 	}
 
-	err = alternatingStream(conn)
+	err = alternatingStream(conn, info)
 	if err != nil {
 		return err
 	}
+	return nil
 }
 func alternatingStream(conn net.Conn, info *MetainfoInfo) error {
 	// randomly pick a pieace to download
@@ -119,7 +126,8 @@ func alternatingStream(conn net.Conn, info *MetainfoInfo) error {
 		}
 	}
 
-	sendMessage(conn, requestMessage())
+	sendMessage(conn, requestMessage(int32(index)))
+	return nil
 }
 
 var pieceInnerIndex int32 = 0
@@ -177,29 +185,29 @@ func buildpeerMessageBitfield(info *MetainfoInfo) (*bytes.Buffer, error) {
 	return buf, nil
 }
 
-func handshake(conn net.Conn, ipt ipPort, metainfo *Metainfo) error {
+func handshake(conn net.Conn, p *peer, metainfo *Metainfo) error {
 	// The handshake starts with character ninteen (decimal) followed by the string 'BitTorrent protocol'
 	err := protocol(conn)
 	if err != nil {
-		fmt.Printf("%s protocol error: %s", ipt, err)
+		fmt.Printf("%s protocol error: %s", p, err)
 		return err
 	}
 
 	err = reservedBytes(conn)
 	if err != nil {
-		fmt.Printf("%s reserved bytes error: %s", ipt, err)
+		fmt.Printf("%s reserved bytes error: %s", p, err)
 		return err
 	}
 
 	err = exchangeSha1Hash(conn, metainfo.InfoHash[:])
 	if err != nil {
-		fmt.Printf("%s exchange hash error: %s", ipt, err)
+		fmt.Printf("%s exchange hash error: %s", p, err)
 		return err
 	}
 
 	err = exchangePeerID(conn, myPeerID[:])
 	if err != nil {
-		fmt.Printf("%s exchange peer id error: %s", ipt, err)
+		fmt.Printf("%s exchange peer id error: %s", p, err)
 		return err
 	}
 
@@ -257,7 +265,7 @@ func exchangeSha1Hash(conn net.Conn, infoHash []byte) error {
 		log.Fatal("write reserved bytes length error")
 	}
 
-	br := make([]byte, infoHashSize)
+	br := make([]byte, hashSize)
 	_, err = io.ReadFull(conn, br)
 	if err != nil {
 		return err
