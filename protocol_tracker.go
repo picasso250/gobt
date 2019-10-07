@@ -1,0 +1,192 @@
+package gobt
+
+import (
+	"fmt"
+	"io/ioutil"
+	"log"
+	"net/http"
+	"net/url"
+	"os"
+	"strconv"
+	"sync"
+	"time"
+)
+
+// TrackerRequest Tracker GET requests
+type TrackerRequest struct {
+	InfoHash   hash
+	PeerID     peerID
+	IP         uint32
+	Port       uint16
+	Uploaded   uint64
+	Downloaded uint64
+	Left       uint64
+	Event      uint32
+	Key        uint32
+	NumWant    int32
+}
+
+// TrackerResponse IPv4 announce response
+type TrackerResponse struct {
+	Action        uint32
+	TransactionID uint32
+	Interval      uint32
+	Leechers      uint32
+	Seeders       uint32
+	IPPort        []ipPort
+}
+
+// NewTrackerRequest new a tracker request with current bt file
+func NewTrackerRequest(mi *Metainfo) *TrackerRequest {
+	r := TrackerRequest{
+		InfoHash:   mi.InfoHash,
+		PeerID:     myPeerID,
+		Port:       availablePort(),
+		Uploaded:   0,
+		Downloaded: 0,
+		Left:       left(mi.Info),
+		// Key        uint32
+		NumWant: -1,
+	}
+	return &r
+}
+
+// Query return http query
+func (r *TrackerRequest) Query() url.Values {
+	v := url.Values{}
+	v.Set("info_hash", string(r.InfoHash[:]))
+	v.Set("peer_id", string(r.PeerID[:]))
+	v.Set("port", strconv.Itoa(int(r.Port)))
+	v.Set("uploaded", strconv.Itoa(int(r.Uploaded)))
+	v.Set("downloaded", strconv.Itoa(int(r.Downloaded)))
+	v.Set("left", strconv.Itoa(int(r.Left)))
+	return v
+}
+
+var trackerMap map[string]bool // state of tracker
+var trackerMapMutex sync.RWMutex
+
+func trackerProtocol(metainfo *Metainfo) {
+	allAnnounce := getAllAnnounce(metainfo)
+	chPeers := make(chan []ipPort, 1)
+	for _, announce := range allAnnounce {
+		u, err := url.Parse(announce)
+		if err != nil {
+			fmt.Printf("parse announce url error: %s\n", err)
+			return
+		}
+		// fmt.Println(u)
+		if u.Scheme != "http" {
+			fmt.Printf("unsupported tracker scheme yet: %s\n", announce)
+			continue
+		}
+
+		go keepAliveWithTracker(u, metainfo, chPeers)
+	}
+}
+func keepAliveWithTracker(u *url.URL, metainfo *Metainfo, chPeers chan []ipPort) {
+	q := NewTrackerRequest(metainfo).Query()
+	u.RawQuery = q.Encode()
+	var body []byte
+	if doNotBotherTracker { // for debug
+		debugRoot := ".debug"
+		cacheFile := pathBuild(debugRoot, (u.Hostname()))
+		if _, err := os.Stat(cacheFile); err != nil {
+			errFile := pathBuild(debugRoot, (u.Hostname())+".error")
+			if _, err := os.Stat(errFile); err == nil {
+				errBytes, err := ioutil.ReadFile(errFile)
+				if err != nil {
+					log.Fatal(err)
+				}
+				fmt.Printf("last error of %s: %s\n", u.String(), string(errBytes))
+				return
+			}
+			resp, err := http.Get(u.String())
+			if err != nil {
+				fmt.Printf("GET %s error: %s\n", u.String(), err)
+				err = ioutil.WriteFile(errFile, []byte(err.Error()), 0664)
+				if err != nil {
+					log.Fatal(err)
+				}
+				return
+			}
+			defer resp.Body.Close()
+			body, err = ioutil.ReadAll(resp.Body)
+			if err != nil {
+				fmt.Printf("GET %s read error: %s\n", u.String(), err)
+				return
+			}
+			err = ioutil.WriteFile(cacheFile, body, 0664)
+			if err != nil {
+				log.Fatal(err)
+			}
+		} else {
+			fmt.Printf("cache hit %s\n", u.String())
+			body, err = ioutil.ReadFile(cacheFile)
+			if err != nil {
+				log.Fatal(err)
+			}
+		}
+	} else {
+		resp, err := http.Get(u.String())
+		if err != nil {
+			fmt.Printf("GET %s error: %s\n", u.String(), err)
+			return
+		}
+		defer resp.Body.Close()
+		body, err = ioutil.ReadAll(resp.Body)
+		if err != nil {
+			fmt.Printf("GET %s read error: %s\n", u.String(), err)
+			return
+		}
+	}
+
+	r, err := Parse(body)
+	if err != nil {
+		fmt.Printf("GET %s get %s parse error: %s\n", u.String(), string(body), err)
+		return
+	}
+	res := r.(map[string]interface{})
+	if res["failure reason"] != nil {
+		fmt.Printf("GET %s failure reason: %s\n", u.String(), res["failure reason"].(string))
+		return
+	}
+	interval := res["interval"].(int)
+	fmt.Printf("interval: %d\t(%s)\n", interval, u.String())
+
+	peers := res["peers"]
+	p := make([]ipPort, 0)
+	switch t := peers.(type) {
+	default:
+		fmt.Printf("unexpected type %T\n", t) // %T prints whatever type t has
+		return
+	case string:
+		p, err = compactPeerList(peers.(string))
+		if err != nil {
+			fmt.Printf("parse compact peer list error: %v\n", err)
+			return
+		}
+	case map[string]interface{}:
+		p, err = peerList(peers.(map[string]interface{}))
+		if err != nil {
+			fmt.Printf("parse compact peer list error: %v\n", err)
+			return
+		}
+	}
+	
+	if len(p)!=0 {
+		peersMapMutex.Lock()
+		for _,ipt := range p{
+			if peers[ipt.Uint64()]== nil{
+				peers[ipt.Uint64()] =&peer{
+					IP:ipt.IP,
+					Port:ipt.Port,
+					peerID
+				}
+			}
+		}
+	}
+	
+	time.Sleep(time.Duration(interval * int(time.Second)))
+	go keepAliveWithTracker(u, metainfo, chPeers)
+}
