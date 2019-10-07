@@ -540,7 +540,7 @@ func doPeer(ipt ipPort, metainfo *Metainfo) {
 		return
 	}
 
-	heartBeatChan := make(chan int, 1)
+	heartBeatChan := make(chan int)
 	go heartBeat(conn, heartBeatChan)
 
 	// inform heart beat to stop
@@ -639,7 +639,7 @@ func keepAliveWithTracker(u *url.URL, metainfo *Metainfo, chPeers chan []ipPort)
 		chPeers <- p
 	}
 	time.Sleep(time.Duration(interval * int(time.Second)))
-	keepAliveWithTracker(u, metainfo, chPeers)
+	go keepAliveWithTracker(u, metainfo, chPeers)
 }
 func pathBuild(path ...string) string {
 	return strings.Join(path, string([]rune([]rune{os.PathSeparator})))
