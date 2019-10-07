@@ -5,6 +5,7 @@ import (
 	"crypto/sha1"
 	"encoding/binary"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -26,22 +27,14 @@ const doNotBotherTracker = true // for debug use
 const infoHashSize = 20
 const peerIDSize = 20
 
-// non-keepalive messages start with a single byte which gives their type
-const (
-	choke = iota
-	unchoke
-	interested
-	notInterested
-	have
-	bitfield
-	request
-	piece
-	cancel
-)
-
 // settings
-var downloadRoot = "d:\\DOWNLOAD\\test"
 var maxPeerCount = 100
+var downloadRoot = "d:\\DOWNLOAD\\test"
+
+func init() {
+	maxPeerCount = flag.Int("max-peer-count", 100, "how many peers to connect")
+	downloadRoot = flag.String("root", ".", "download root directory")
+}
 
 var byteTable = map[byte]int{
 	0:   0,
@@ -527,25 +520,7 @@ func doPeers(info *Metainfo) {
 	time.Sleep(time.Minute)
 	go doPeers(info)
 }
-func doPeer(ipt ipPort, metainfo *Metainfo) {
-	conn, err := net.Dial("tcp4", ipt.String())
-	if err != nil {
-		fmt.Printf("dial tcp %s error: %s\n", ipt.String(), err)
-		return
-	}
-	defer conn.Close()
-	err = handshake(conn, ipt, metainfo)
-	if err != nil {
-		fmt.Printf("%s handshake error: %s", ipt, err)
-		return
-	}
 
-	heartBeatChan := make(chan int)
-	go heartBeat(conn, heartBeatChan)
-
-	// inform heart beat to stop
-	heartBeatChan <- 1
-}
 func keepAliveWithTracker(u *url.URL, metainfo *Metainfo, chPeers chan []ipPort) {
 	q := NewTrackerRequest(metainfo).Query()
 	u.RawQuery = q.Encode()
@@ -935,7 +910,7 @@ func announceRequest(conn *net.UDPConn, transactionID uint32, connectionID uint6
 func left(info *MetainfoInfo) uint64 {
 	r := string(append([]rune(downloadRoot), os.PathSeparator))
 	infoFilename := r + info.Name + ".btinfo"
-	b, err := ioutil.ReadFile(infoFilename)
+	b, err := bitfieldFromFile(infoFilename)
 	if err != nil {
 		log.Fatal(err)
 	}
