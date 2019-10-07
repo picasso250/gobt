@@ -2,13 +2,14 @@ package gobt
 
 import (
 	"encoding/binary"
+	"io"
 	"log"
 	"net"
 )
 
-func writeInteger(conn net.Conn, i interface{}) error {
+func writeInteger(w io.Writer, i interface{}) error {
 	// All later integers sent in the protocol are encoded as four bytes big-endian.
-	return binary.Write(conn, binary.BigEndian, i)
+	return binary.Write(w, binary.BigEndian, i)
 }
 func read4Byte(conn *net.UDPConn) (uint32, error) {
 	var i uint32
