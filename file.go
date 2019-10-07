@@ -68,8 +68,7 @@ func ensureFiles(info *MetainfoInfo) error {
 
 	infoFilename := info.infofilename()
 	if _, err := os.Stat(infoFilename); os.IsNotExist(err) {
-		piecesCount := len([]byte(info.Pieces)) / hashSize
-		err := allZeroBitField(piecesCount).ToFile(infoFilename)
+		err := allZeroBitField(info.piecesCount()).ToFile(infoFilename)
 		if err != nil {
 			return err
 		}
@@ -115,8 +114,7 @@ func ensureOneFile(info *MetainfoInfo) error {
 
 	infoFilename := info.infofilename()
 	if _, err := os.Stat(infoFilename); os.IsNotExist(err) {
-		piecesCount := len([]byte(info.Pieces)) / hashSize
-		err := allZeroBitField(piecesCount).ToFile(infoFilename)
+		err := allZeroBitField(info.piecesCount()).ToFile(infoFilename)
 		if err != nil {
 			return err
 		}

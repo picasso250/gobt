@@ -33,7 +33,7 @@ type MetainfoInfo struct {
 	PieceLength int    // piece length maps to the number of bytes in each piece the file is split into
 	Pieces      []byte // pieces maps to a string whose length is a multiple of 20
 	Length      int    // There is also a key length or a key files, but not both or neither
-	Files       []File
+	Files       []File // But we always assign Length as total length for convenience
 	OriginData  map[string]interface{}
 }
 
@@ -54,6 +54,9 @@ func NewMetainfoInfoFromMap(m map[string]interface{}) *MetainfoInfo {
 	}
 
 	return &mi
+}
+func (info *MetainfoInfo) piecesCount() int {
+	return len([]byte(info.Pieces)) / hashSize
 }
 func (info *MetainfoInfo) filename() string {
 	return pathBuild(downloadRoot, info.Name)
