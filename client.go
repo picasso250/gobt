@@ -1,7 +1,6 @@
 package gobt
 
 import (
-	"bufio"
 	"bytes"
 	"crypto/sha1"
 	"encoding/binary"
@@ -528,113 +527,25 @@ func doPeers(info *Metainfo) {
 	time.Sleep(time.Minute)
 	go doPeers(info)
 }
-func doPeer(ipt ipPort, info *Metainfo) {
+func doPeer(ipt ipPort, metainfo *Metainfo) {
 	conn, err := net.Dial("tcp4", ipt.String())
 	if err != nil {
 		fmt.Printf("dial tcp %s error: %s\n", ipt.String(), err)
 		return
 	}
 	defer conn.Close()
-	err = handshake(ipt)
+	err = handshake(conn, ipt, metainfo)
 	if err != nil {
 		fmt.Printf("%s handshake error: %s", ipt, err)
-
 		return
 	}
 
+	heartBeatChan := make(chan int, 1)
+	go heartBeat(conn, heartBeatChan)
+
+	// inform heart beat to stop
+	heartBeatChan <- 1
 }
-func exchangeSha1Hash(conn net.Conn, infoHash []byte) error {
-	n, err := conn.Write(infoHash)
-	if err != nil {
-		return err
-	}
-	if n != len(infoHash) {
-		log.Fatal("write reserved bytes length error")
-	}
-
-	br := make([]byte, infoHashSize)
-	_, err = io.ReadFull(conn, br)
-	if err != nil {
-		return err
-	}
-	if bytes.Compare(br, infoHash) != 0 {
-		log.Fatal("info hash not equal")
-	}
-
-	return nil
-}
-func reservedBytes(conn net.Conn) error {
-	b := make([]byte, 8)
-	n, err := conn.Write(b)
-	if err != nil {
-		return err
-	}
-	if n != len(b) {
-		log.Fatal("write reserved bytes length error")
-	}
-
-	br := make([]byte, 8)
-	_, err = io.ReadFull(conn, br)
-	if err != nil {
-		return err
-	}
-	if bytes.Compare(br, b) != 0 {
-		log.Fatal("reserved bytes not 0")
-	}
-
-	return nil
-}
-
-func handshake(conn net.Conn, ipt ipPort, metainfo *Metainfo) error {
-	// The handshake starts with character ninteen (decimal) followed by the string 'BitTorrent protocol'
-	err := protocol(conn)
-	if err != nil {
-		fmt.Printf("%s protocol error: %s", ipt, err)
-		return err
-	}
-
-	err = reservedBytes(conn)
-	if err != nil {
-		fmt.Printf("%s reserved bytes error: %s", ipt, err)
-		return err
-	}
-
-	err = exchangeSha1Hash(conn, metainfo.InfoHash[:])
-	if err != nil {
-		fmt.Printf("%s exchange hash error: %s", ipt, err)
-		return err
-	}
-
-	return nil
-}
-func protocol(conn net.Conn) error {
-	s := "BitTorrent protocol"
-	n, err := fmt.Fprintf(conn, "%c%s", 19, s)
-	if err != nil {
-		return err
-	}
-	if n != len(s)+1 {
-		log.Fatal("handshake write failed")
-	}
-	rd := bufio.NewReader(conn)
-	len, err := rd.ReadByte()
-	if err != nil {
-		return err
-	}
-	if len != 19 {
-		log.Fatal("unknown handshake version")
-	}
-	b := make([]byte, 19)
-	_, err = io.ReadFull(rd, b)
-	if err != nil {
-		return err
-	}
-	if string(b) != s {
-		log.Fatalf("unknown version: %s", string(b))
-	}
-	return nil
-}
-
 func keepAliveWithTracker(u *url.URL, metainfo *Metainfo, chPeers chan []ipPort) {
 	q := NewTrackerRequest(metainfo).Query()
 	u.RawQuery = q.Encode()
@@ -865,13 +776,8 @@ func ensureFiles(info *MetainfoInfo) error {
 
 	infoFilename := r + info.Name + ".btinfo"
 	if _, err := os.Stat(infoFilename); os.IsNotExist(err) {
-		piecesLen := len([]byte(info.Pieces)) / infoHashSize
-		bitmapSize := piecesLen / 8
-		if piecesLen%8 != 0 {
-			bitmapSize++
-		}
-		b := make([]byte, bitmapSize)
-		err := ioutil.WriteFile(infoFilename, b, 0664)
+		piecesCount := len([]byte(info.Pieces)) / infoHashSize
+		err := ioutil.WriteFile(infoFilename, allZeroBitField(piecesCount), 0664)
 		if err != nil {
 			return err
 		}
@@ -918,13 +824,8 @@ func ensureOneFile(info *MetainfoInfo) error {
 
 	infoFilename := r + info.Name + ".btinfo"
 	if _, err := os.Stat(infoFilename); os.IsNotExist(err) {
-		piecesLen := len([]byte(info.Pieces)) / infoHashSize
-		bitmapSize := piecesLen / 8
-		if piecesLen%8 != 0 {
-			bitmapSize++
-		}
-		b := make([]byte, bitmapSize)
-		err := ioutil.WriteFile(infoFilename, b, 0664)
+		piecesCount := len([]byte(info.Pieces)) / infoHashSize
+		err := ioutil.WriteFile(infoFilename, allZeroBitField(piecesCount), 0664)
 		if err != nil {
 			return err
 		}
@@ -1015,40 +916,6 @@ func announceResponse(conn *net.UDPConn, transactionID uint32) (*TrackerResponse
 		IPPort:        lst,
 	}
 	return &resp, nil
-}
-func read4Byte(conn *net.UDPConn) (uint32, error) {
-	b := make([]byte, 4)
-	n, err := conn.Read(b)
-	if err != nil {
-		return 0, err
-	}
-	if n != 4 {
-		log.Fatal("no 4")
-	}
-	var i uint32
-	buf := bytes.NewReader(b)
-	err = binary.Read(buf, binary.BigEndian, &i)
-	if err != nil {
-		log.Fatal(err)
-	}
-	return i, nil
-}
-func read2Byte(conn *net.UDPConn) (uint16, error) {
-	b := make([]byte, 2)
-	n, err := conn.Read(b)
-	if err != nil {
-		return 0, err
-	}
-	if n != 2 {
-		log.Fatal("no 2")
-	}
-	var i uint16
-	buf := bytes.NewReader(b)
-	err = binary.Read(buf, binary.BigEndian, &i)
-	if err != nil {
-		log.Fatal(err)
-	}
-	return i, nil
 }
 func announceRequest(conn *net.UDPConn, transactionID uint32, connectionID uint64, req *TrackerRequest) error {
 	b, err := announceRequestBytes(conn, transactionID, connectionID, req)

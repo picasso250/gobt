@@ -20,3 +20,10 @@ func (b bitfield) SetBit(i int, v byte) {
 	v <<= (7 - ii)
 	b[bi] |= v
 }
+func allZeroBitField(size int) bitfield {
+	bitmapSize := size / 8
+	if size%8 != 0 {
+		bitmapSize++
+	}
+	return make(bitfield, bitmapSize)
+}
