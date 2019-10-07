@@ -3,6 +3,7 @@ package gobt
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -39,6 +40,7 @@ type peer struct {
 
 	Conn        net.Conn
 	pieceOffset int32
+	Bitfield    bitfield
 }
 
 func newPeer(ip uint32, port uint16, pid peerID) *peer {
@@ -124,8 +126,52 @@ func (p *peer) peerMessages(info *MetainfoInfo) error {
 }
 func (p *peer) loop() error {
 	for {
+		t, b, err := readNextMsg(p.Conn)
+		if err != nil {
+			return err
+		}
+		switch t {
+		default:
+			return errors.New("unknown message type")
+		case typeChoke:
+			p.PeerChoking = 1
+		case typeUnchoke:
+			p.PeerChoking = 0
+		case typeInterested:
+			p.PeerInterested = 1
+		case typeNotInterested:
+			p.PeerInterested = 0
+		case typeHave:
 
+		}
 	}
+}
+func readNextMsg(conn net.Conn) (uint32, []byte, error) {
+	// Messages of length zero are keepalives, and ignored
+	size := 0
+	for {
+		size, err := readUint32(conn)
+		if err != nil {
+			return 0, nil, err
+		}
+		if size != 0 {
+			break
+		}
+	}
+
+	t, err := readUint32(conn)
+	if err != nil {
+		return 0, nil, err
+	}
+
+	b := make([]byte, size-4)
+	if size-4 > 0 {
+		_, err = io.ReadFull(conn, b)
+		if err != nil {
+			return 0, nil, err
+		}
+	}
+	return t, b, nil
 }
 func sendCmd(conn net.Conn, t uint32) error {
 	err := writeInteger(conn, uint32(4))
