@@ -12,6 +12,8 @@ import (
 	"time"
 )
 
+const requestLength = uint32(1 << 14) // All current implementations use 2^14 (16 kiB)
+
 // non-keepalive messages start with a single byte which gives their type
 const (
 	typeChoke = iota
@@ -60,9 +62,7 @@ func (p *peer) String() string {
 	return IPIntToString(int(p.IP)) + ":" + strconv.Itoa(int(p.Port))
 }
 
-const requestLength = uint32(1 << 14) // All current implementations use 2^14 (16 kiB)
-
-func doPeer(p *peer, metainfo *Metainfo) {
+func (p *peer) start(metainfo *Metainfo) {
 	var err error
 	peersMapMutex.Lock()
 	p.Conn, err = net.Dial("tcp4", p.String())
@@ -93,6 +93,7 @@ func doPeer(p *peer, metainfo *Metainfo) {
 	}
 
 }
+
 func peerMessages(conn net.Conn, info *MetainfoInfo) error {
 	msg, err := buildpeerMessageBitfield(info)
 	if err != nil {

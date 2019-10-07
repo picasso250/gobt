@@ -349,7 +349,7 @@ func doPeers(mi *Metainfo) {
 		peersMapMutex.RLock()
 		for _, peer := range peersMap {
 			if peer.Conn == nil {
-				go doPeer(peer, mi)
+				go peer.start(mi)
 			}
 		}
 		peersMapMutex.RUnlock()
