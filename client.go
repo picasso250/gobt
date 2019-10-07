@@ -494,7 +494,7 @@ func udpTracker(address string, metainfo *Metainfo) error {
 }
 func announceResponse(conn *net.UDPConn, transactionID uint32) (*TrackerResponse, error) {
 
-	action, err := read4Byte(conn)
+	action, err := readUint32(conn)
 	if err != nil {
 		return nil, err
 	}
@@ -503,7 +503,7 @@ func announceResponse(conn *net.UDPConn, transactionID uint32) (*TrackerResponse
 		log.Fatal("action not 1")
 	}
 
-	t, err := read4Byte(conn)
+	t, err := readUint32(conn)
 	if err != nil {
 		return nil, err
 	}
@@ -511,18 +511,27 @@ func announceResponse(conn *net.UDPConn, transactionID uint32) (*TrackerResponse
 		log.Fatal("transactionID mismatch")
 	}
 
-	interval, err := read4Byte(conn)
+	interval, err := readUint32(conn)
+	if err != nil {
+		return nil, err
+	}
 	fmt.Printf("interval %d\n", interval)
 
-	leechers, err := read4Byte(conn)
+	leechers, err := readUint32(conn)
+	if err != nil {
+		return nil, err
+	}
 	fmt.Printf("leechers %d\n", leechers)
 
-	seeders, err := read4Byte(conn)
+	seeders, err := readUint32(conn)
+	if err != nil {
+		return nil, err
+	}
 	fmt.Printf("seeders %d\n", seeders)
 
 	lst := make([]ipPort, 0)
 	for {
-		ip, err := read4Byte(conn)
+		ip, err := readUint32(conn)
 		if err != nil {
 			return nil, err
 		}
