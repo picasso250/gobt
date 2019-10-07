@@ -240,6 +240,7 @@ func parseInt(b []byte) (int, []byte, error) {
 	if idx == -1 {
 		return 0, nil, errors.New("integer not end with e")
 	}
+	// todo Integers have no size limitation
 	i, err := strconv.Atoi(string(b[1:idx]))
 	if err != nil {
 		return 0, nil, err
