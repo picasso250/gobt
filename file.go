@@ -66,13 +66,17 @@ func ensureFiles(info *MetainfoInfo) (bf bitfield, err error) {
 		}
 	}
 
-	infoFilename := info.infofilename()
+	return ensureInfoFile(info.infofilename(), info.piecesCount())
+}
+func ensureInfoFile(infoFilename string, piecesCount int) (bf bitfield, err error) {
 	if _, err := os.Stat(infoFilename); os.IsNotExist(err) {
-		bf = allZeroBitField(info.piecesCount())
+		bf = allZeroBitField(piecesCount)
 		err := bf.ToFile(infoFilename)
 		if err != nil {
 			return nil, err
 		}
+	} else {
+		return ioutil.ReadFile(infoFilename)
 	}
 	return
 }
@@ -113,15 +117,7 @@ func ensureOneFile(info *MetainfoInfo) (bf bitfield, err error) {
 		}
 	}
 
-	infoFilename := info.infofilename()
-	if _, err := os.Stat(infoFilename); os.IsNotExist(err) {
-		bf = allZeroBitField(info.piecesCount())
-		err := bf.ToFile(infoFilename)
-		if err != nil {
-			return nil, err
-		}
-	}
-	return
+	return ensureInfoFile(info.infofilename(), info.piecesCount())
 }
 func checkHash(info *MetainfoInfo, index int, ih hash) (bool, error) {
 	b := make([]byte, 0, info.PieceLength)
