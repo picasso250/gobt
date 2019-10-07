@@ -337,11 +337,12 @@ func NewMetainfoFromMap(m map[string]interface{}) *Metainfo {
 }
 
 // MetainfoInfo metainfo[info]
+// todo should be int64
 type MetainfoInfo struct {
 	Name        string
-	PieceLength int64
+	PieceLength int
 	Pieces      []byte
-	Length      int64
+	Length      int
 	Files       []File
 	OriginData  map[string]interface{}
 }
@@ -350,9 +351,9 @@ type MetainfoInfo struct {
 func NewMetainfoInfoFromMap(m map[string]interface{}) *MetainfoInfo {
 	mi := MetainfoInfo{
 		Name:        m["name"].(string),
-		PieceLength: m["piece length"].(int64),
+		PieceLength: m["piece length"].(int),
 		Pieces:      []byte(m["pieces"].(string)),
-		Length:      m["length"].(int64),
+		Length:      m["length"].(int),
 		OriginData:  m,
 	}
 	if m["files"] != nil {
@@ -366,15 +367,16 @@ func NewMetainfoInfoFromMap(m map[string]interface{}) *MetainfoInfo {
 }
 
 // File file
+// todo should be int64
 type File struct {
-	Length int64
+	Length int
 	Path   []string
 }
 
 // NewFileFromMap builds a File
 func NewFileFromMap(m map[string]interface{}) File {
 	return File{
-		Length: m["length"].(int64),
+		Length: m["length"].(int),
 		Path:   stringSlice(m["path"].([]interface{})),
 	}
 }
