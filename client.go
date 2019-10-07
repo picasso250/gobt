@@ -463,6 +463,7 @@ func (i ipPort) String() string {
 type peer struct {
 	Choked     bool
 	Interested bool
+	PeerID     [peerIDSize]byte
 }
 
 // Download download BT file
@@ -528,19 +529,18 @@ func doPeers(info *Metainfo) {
 	go doPeers(info)
 }
 func doPeer(ipt ipPort, info *Metainfo) {
-	conn, err := handshake(ipt)
+	conn, err := net.Dial("tcp4", ipt.String())
+	if err != nil {
+		fmt.Printf("dial tcp %s error: %s\n", ipt.String(), err)
+		return
+	}
+	defer conn.Close()
+	err = handshake(ipt)
 	if err != nil {
 		fmt.Printf("%s handshake error: %s", ipt, err)
+
 		return
 	}
-
-	err = reservedBytes(conn)
-	if err != nil {
-		fmt.Printf("%s reserved bytes error: %s", ipt, err)
-		return
-	}
-
-	err = exchangeSha1Hash(conn, info.InfoHash[:])
 
 }
 func exchangeSha1Hash(conn net.Conn, infoHash []byte) error {
@@ -585,16 +585,33 @@ func reservedBytes(conn net.Conn) error {
 	return nil
 }
 
-func handshake(ipt ipPort) (net.Conn, error) {
-	conn, err := net.Dial("tcp4", ipt.String())
-	if err != nil {
-		return nil, err
-	}
+func handshake(conn net.Conn, ipt ipPort, metainfo *Metainfo) error {
 	// The handshake starts with character ninteen (decimal) followed by the string 'BitTorrent protocol'
+	err := protocol(conn)
+	if err != nil {
+		fmt.Printf("%s protocol error: %s", ipt, err)
+		return err
+	}
+
+	err = reservedBytes(conn)
+	if err != nil {
+		fmt.Printf("%s reserved bytes error: %s", ipt, err)
+		return err
+	}
+
+	err = exchangeSha1Hash(conn, metainfo.InfoHash[:])
+	if err != nil {
+		fmt.Printf("%s exchange hash error: %s", ipt, err)
+		return err
+	}
+
+	return nil
+}
+func protocol(conn net.Conn) error {
 	s := "BitTorrent protocol"
 	n, err := fmt.Fprintf(conn, "%c%s", 19, s)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if n != len(s)+1 {
 		log.Fatal("handshake write failed")
@@ -602,7 +619,7 @@ func handshake(ipt ipPort) (net.Conn, error) {
 	rd := bufio.NewReader(conn)
 	len, err := rd.ReadByte()
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if len != 19 {
 		log.Fatal("unknown handshake version")
@@ -610,12 +627,12 @@ func handshake(ipt ipPort) (net.Conn, error) {
 	b := make([]byte, 19)
 	_, err = io.ReadFull(rd, b)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if string(b) != s {
 		log.Fatalf("unknown version: %s", string(b))
 	}
-	return conn, nil
+	return nil
 }
 
 func keepAliveWithTracker(u *url.URL, metainfo *Metainfo, chPeers chan []ipPort) {
