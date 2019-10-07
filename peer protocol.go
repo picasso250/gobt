@@ -10,6 +10,92 @@ import (
 	"time"
 )
 
+// non-keepalive messages start with a single byte which gives their type
+const (
+	typeChoke = iota
+	typeUnchoke
+	typeInterested
+	typeNotInterested
+	typeHave
+	typeBitfield
+	typeRequest
+	typePiece
+	typeCancel
+)
+
+func doPeer(ipt ipPort, metainfo *Metainfo) {
+	conn, err := net.Dial("tcp4", ipt.String())
+	if err != nil {
+		fmt.Printf("dial tcp %s error: %s\n", ipt.String(), err)
+		return
+	}
+	defer conn.Close()
+	err = handshake(conn, ipt, metainfo)
+	if err != nil {
+		fmt.Printf("%s handshake error: %s", ipt, err)
+		return
+	}
+
+	heartBeatChan := make(chan int)
+	go heartBeat(conn, heartBeatChan)
+	defer func() {
+		// inform heart beat to stop
+		heartBeatChan <- 1
+	}()
+
+	err = peerMessages(conn, metainfo.Info)
+	if err != nil {
+		fmt.Printf("peer messages error: %s\n", err)
+		return
+	}
+
+}
+func peerMessages(conn net.Conn, info *MetainfoInfo) error {
+	msg, err := buildpeerMessageBitfield(info)
+	if err != nil {
+		return err
+	}
+	err=sendMessage(conn, msg)
+	if err != nil {
+		return err
+	}
+
+	
+}
+func sendMessage(conn net.Conn, msg *bytes.Buffer) error {
+	err := writeInteger(conn, uint32(msg.Len()))
+	if err != nil {
+		return err
+	}
+	n, err := msg.WriteTo(conn)
+	if err != nil {
+		return err
+	}
+	if int(n) != msg.Len() {
+		log.Fatal("write message length not enough")
+	}
+	return nil
+}
+func buildpeerMessageBitfield(info *MetainfoInfo) (*bytes.Buffer, error) {
+	buf := new(bytes.Buffer)
+	err := writeInteger(buf, uint32(typeBitfield))
+	if err != nil {
+		return nil, err
+	}
+	b, err := info.bitfield()
+	if err != nil {
+		return nil, err
+	}
+	n, err := buf.Write(b)
+	if err != nil {
+		return nil, err
+	}
+	if n != len(b) {
+		log.Fatal("write not enough bytes")
+	}
+	return buf, nil
+}
+
 func handshake(conn net.Conn, ipt ipPort, metainfo *Metainfo) error {
 	// The handshake starts with character ninteen (decimal) followed by the string 'BitTorrent protocol'
 	err := protocol(conn)
@@ -30,9 +116,29 @@ func handshake(conn net.Conn, ipt ipPort, metainfo *Metainfo) error {
 		return err
 	}
 
+	err = exchangePeerID(conn, myPeerID[:])
+	if err != nil {
+		fmt.Printf("%s exchange peer id error: %s", ipt, err)
+		return err
+	}
+
 	return nil
 }
 
+func exchangePeerID(conn net.Conn, peerID []byte) error {
+
+	n, err := conn.Write(peerID)
+	if err != nil {
+		return err
+	}
+	if n != len(peerID) {
+		log.Fatal("write reserved bytes length error")
+	}
+
+	br := make([]byte, peerIDSize)
+	_, err = io.ReadFull(conn, br)
+	return err
+}
 func protocol(conn net.Conn) error {
 	s := "BitTorrent protocol"
 	n, err := fmt.Fprintf(conn, "%c%s", 19, s)
