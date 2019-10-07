@@ -5,7 +5,7 @@ type Metainfo struct {
 	Announce     string
 	AnnounceList []string
 	Info         *MetainfoInfo
-	InfoHash     [infoHashSize]byte
+	InfoHash     hash
 	OriginData   map[string]interface{}
 }
 
@@ -30,9 +30,9 @@ func NewMetainfoFromMap(m map[string]interface{}) *Metainfo {
 // todo should be int64
 type MetainfoInfo struct {
 	Name        string
-	PieceLength int
-	Pieces      []byte
-	Length      int
+	PieceLength int    // piece length maps to the number of bytes in each piece the file is split into
+	Pieces      []byte // pieces maps to a string whose length is a multiple of 20
+	Length      int    // There is also a key length or a key files, but not both or neither
 	Files       []File
 	OriginData  map[string]interface{}
 }
@@ -65,22 +65,8 @@ func (info *MetainfoInfo) bitfield() (bitfield, error) {
 	return bitfieldFromFile(info.infofilename())
 }
 
-// File file
-// todo should be int64
-type File struct {
-	Length int
-	Path   []string
-}
-
-// NewFileFromMap builds a File
-func NewFileFromMap(m map[string]interface{}) File {
-	return File{
-		Length: m["length"].(int),
-		Path:   stringSlice(m["path"].([]interface{})),
-	}
-}
-
 type peerID [peerIDSize]byte
+type hash [hashSize]byte
 
 func stringSlice(a []interface{}) []string {
 	b := make([]string, len(a))
