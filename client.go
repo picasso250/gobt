@@ -777,7 +777,7 @@ func ensureFiles(info *MetainfoInfo) error {
 	infoFilename := r + info.Name + ".btinfo"
 	if _, err := os.Stat(infoFilename); os.IsNotExist(err) {
 		piecesCount := len([]byte(info.Pieces)) / infoHashSize
-		err := ioutil.WriteFile(infoFilename, allZeroBitField(piecesCount), 0664)
+		err := allZeroBitField(piecesCount).ToFile(infoFilename)
 		if err != nil {
 			return err
 		}
@@ -825,7 +825,7 @@ func ensureOneFile(info *MetainfoInfo) error {
 	infoFilename := r + info.Name + ".btinfo"
 	if _, err := os.Stat(infoFilename); os.IsNotExist(err) {
 		piecesCount := len([]byte(info.Pieces)) / infoHashSize
-		err := ioutil.WriteFile(infoFilename, allZeroBitField(piecesCount), 0664)
+		err := allZeroBitField(piecesCount).ToFile(infoFilename)
 		if err != nil {
 			return err
 		}

@@ -1,6 +1,9 @@
 package gobt
 
-import "log"
+import (
+	"io/ioutil"
+	"log"
+)
 
 type bitfield []byte
 
@@ -26,4 +29,14 @@ func allZeroBitField(size int) bitfield {
 		bitmapSize++
 	}
 	return make(bitfield, bitmapSize)
+}
+func bitfieldFromFile(filename string) (bitfield, error) {
+	b, err := ioutil.ReadFile(filename)
+	if err != nil {
+		return nil, err
+	}
+	return bitfield(b), nil
+}
+func (b bitfield) ToFile(filename string) error {
+	return ioutil.WriteFile(filename, b, 0664)
 }
