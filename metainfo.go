@@ -29,12 +29,11 @@ func NewMetainfoFromMap(m map[string]interface{}) *Metainfo {
 }
 
 // MetainfoInfo metainfo[info]
-// todo should be int64
 type MetainfoInfo struct {
 	Name        string
 	PieceLength int    // piece length maps to the number of bytes in each piece the file is split into
 	Pieces      []byte // pieces maps to a string whose length is a multiple of 20
-	Length      int    // There is also a key length or a key files, but not both or neither
+	Length      int64  // There is also a key length or a key files, but not both or neither
 	Files       []File // But we always assign Length as total length for convenience
 	OriginData  map[string]interface{}
 }
@@ -43,9 +42,9 @@ type MetainfoInfo struct {
 func NewMetainfoInfoFromMap(m map[string]interface{}) *MetainfoInfo {
 	mi := MetainfoInfo{
 		Name:        m["name"].(string),
-		PieceLength: m["piece length"].(int),
+		PieceLength: int(m["piece length"].(int64)),
 		Pieces:      []byte(m["pieces"].(string)),
-		Length:      m["length"].(int),
+		Length:      m["length"].(int64),
 		OriginData:  m,
 	}
 	if m["files"] != nil {
