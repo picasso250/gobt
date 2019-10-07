@@ -1,6 +1,7 @@
 package gobt
 
 import (
+	"bufio"
 	"bytes"
 	"crypto/sha1"
 	"encoding/binary"
@@ -16,15 +17,32 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
 const doNotBotherTracker = true // for debug use
 
+// const
 const infoHashSize = 20
 const peerIDSize = 20
 
+// non-keepalive messages start with a single byte which gives their type
+const (
+	choke = iota
+	unchoke
+	interested
+	notInterested
+	have
+	bitfield
+	request
+	piece
+	cancel
+)
+
+// settings
 var downloadRoot = "d:\\DOWNLOAD\\test"
+var maxPeerCount = 100
 
 var byteTable = map[byte]int{
 	0:   0,
@@ -285,6 +303,90 @@ var byteTable = map[byte]int{
 	255: 6,
 }
 
+var meChoked = true // Choking is a notification that no data will be sent until unchoking happens
+var meInterested = false
+var peersStartedMap map[uint64]bool
+var peersStartedMapMutex sync.RWMutex
+var peersMap map[uint64]peer
+var peersMapMutex sync.RWMutex
+
+// Metainfo Metainfo files (also known as .torrent files)
+type Metainfo struct {
+	Announce     string
+	AnnounceList []string
+	Info         *MetainfoInfo
+	InfoHash     [infoHashSize]byte
+	OriginData   map[string]interface{}
+}
+
+// NewMetainfoFromMap builds a Metainfo
+func NewMetainfoFromMap(m map[string]interface{}) *Metainfo {
+	info := m["info"].(map[string]interface{})
+	mi := Metainfo{
+		Announce:   m["announce"].(string),
+		Info:       NewMetainfoInfoFromMap(info),
+		InfoHash:   infoHash(info),
+		OriginData: m,
+	}
+	if m["announce-list"] != nil {
+		for _, a := range m["announce-list"].([]interface{}) {
+			mi.AnnounceList = append(mi.AnnounceList, a.([]interface{})[0].(string))
+		}
+	}
+	return &mi
+}
+
+// MetainfoInfo metainfo[info]
+type MetainfoInfo struct {
+	Name        string
+	PieceLength int64
+	Pieces      []byte
+	Length      int64
+	Files       []File
+	OriginData  map[string]interface{}
+}
+
+// NewMetainfoInfoFromMap builds a map
+func NewMetainfoInfoFromMap(m map[string]interface{}) *MetainfoInfo {
+	mi := MetainfoInfo{
+		Name:        m["name"].(string),
+		PieceLength: m["piece length"].(int64),
+		Pieces:      []byte(m["pieces"].(string)),
+		Length:      m["length"].(int64),
+		OriginData:  m,
+	}
+	if m["files"] != nil {
+		for _, f := range m["files"].([]interface{}) {
+			mi.Files = append(mi.Files, NewFileFromMap(f.(map[string]interface{})))
+		}
+
+	}
+
+	return &mi
+}
+
+// File file
+type File struct {
+	Length int64
+	Path   []string
+}
+
+// NewFileFromMap builds a File
+func NewFileFromMap(m map[string]interface{}) File {
+	return File{
+		Length: m["length"].(int64),
+		Path:   stringSlice(m["path"].([]interface{})),
+	}
+}
+
+func stringSlice(a []interface{}) []string {
+	b := make([]string, len(a))
+	for i, v := range a {
+		b[i] = v.(string)
+	}
+	return b
+}
+
 // TrackerRequest Tracker GET requests
 type TrackerRequest struct {
 	InfoHash   [infoHashSize]byte
@@ -309,15 +411,60 @@ type TrackerResponse struct {
 	IPPort        []ipPort
 }
 
+// NewTrackerRequest new a tracker request with current bt file
+func NewTrackerRequest(mi *Metainfo) *TrackerRequest {
+	r := TrackerRequest{
+		InfoHash:   mi.InfoHash,
+		PeerID:     peerID(),
+		Port:       availablePort(),
+		Uploaded:   0,
+		Downloaded: 0,
+		Left:       left(mi.Info),
+		// Key        uint32
+		NumWant: -1,
+	}
+	return &r
+}
+
+// Query return http query
+func (r *TrackerRequest) Query() url.Values {
+	v := url.Values{}
+	v.Set("info_hash", string(r.InfoHash[:]))
+	v.Set("peer_id", string(r.PeerID[:]))
+	v.Set("port", strconv.Itoa(int(r.Port)))
+	v.Set("uploaded", strconv.Itoa(int(r.Uploaded)))
+	v.Set("downloaded", strconv.Itoa(int(r.Downloaded)))
+	v.Set("left", strconv.Itoa(int(r.Left)))
+	return v
+}
+
 type ipPort struct {
 	IP   uint32
 	Port uint16
 }
 
+func newIPPortFromUint64(u uint64) ipPort {
+	return ipPort{
+		uint32(0xFFFFFFFF & u),
+		uint16(u >> 32),
+	}
+}
+
+func (i ipPort) Uint64() uint64 {
+	return uint64(i.IP)<<32 | uint64(i.Port)
+}
+
+func (i ipPort) String() string {
+	return IPIntToString(int(i.IP)) + ":" + strconv.Itoa(int(i.Port))
+}
+
+type peer struct {
+	Choked     bool
+	Interested bool
+}
+
 // Download download BT file
 func Download(filename string) {
-
-	peers := make([]ipPort, 0)
 
 	metainfo, err := parseBTFile(filename)
 	if err != nil {
@@ -325,16 +472,11 @@ func Download(filename string) {
 		return
 	}
 
-	info := metainfo["info"].(map[string]interface{})
-	err = ensureFile(info)
+	err = ensureFile(metainfo.Info)
 	if err != nil {
 		fmt.Printf("file error: %s\n", err)
 	}
 
-	if metainfo["announce"] == nil {
-		fmt.Printf("no announce key\n")
-		return
-	}
 	allAnnounce := getAllAnnounce(metainfo)
 	chPeers := make(chan []ipPort, 1)
 	for _, announce := range allAnnounce {
@@ -352,19 +494,130 @@ func Download(filename string) {
 		go keepAliveWithTracker(u, metainfo, chPeers)
 	}
 
+	go doPeers(metainfo)
+
 	for {
 		var p []ipPort
 		select {
 		case p = <-chPeers:
 			fmt.Printf("got %d peers\n", len(p))
-			peers = uniquePeers(append(peers, p...))
+			peersStartedMapMutex.Lock()
+			defer peersStartedMapMutex.Unlock()
+			for _, peer := range p {
+				peersStartedMap[peer.Uint64()] = false
+			}
 		}
 	}
 
 }
 
-func keepAliveWithTracker(u *url.URL, metainfo map[string]interface{}, chPeers chan []ipPort) {
-	q := NewTrackerRequest(metainfo["info"].(map[string]interface{})).Query()
+func doPeers(info *Metainfo) {
+	// if peer not start, start it
+	// todo receive
+	peersStartedMapMutex.Lock()
+	for pInt64, started := range peersStartedMap {
+		if !started {
+			go doPeer(newIPPortFromUint64(pInt64), info)
+			peersStartedMap[pInt64] = true
+		}
+	}
+	peersStartedMapMutex.Unlock()
+	time.Sleep(time.Minute)
+	go doPeers(info)
+}
+func doPeer(ipt ipPort, info *Metainfo) {
+	conn, err := handshake(ipt)
+	if err != nil {
+		fmt.Printf("%s handshake error: %s", ipt, err)
+		return
+	}
+
+	err = reservedBytes(conn)
+	if err != nil {
+		fmt.Printf("%s reserved bytes error: %s", ipt, err)
+		return
+	}
+
+	err = exchangeSha1Hash(conn, info.InfoHash[:])
+
+}
+func exchangeSha1Hash(conn net.Conn, infoHash []byte) error {
+	n, err := conn.Write(infoHash)
+	if err != nil {
+		return err
+	}
+	if n != len(infoHash) {
+		log.Fatal("write reserved bytes length error")
+	}
+
+	br := make([]byte, infoHashSize)
+	_, err = io.ReadFull(conn, br)
+	if err != nil {
+		return err
+	}
+	if bytes.Compare(br, infoHash) != 0 {
+		log.Fatal("info hash not equal")
+	}
+
+	return nil
+}
+func reservedBytes(conn net.Conn) error {
+	b := make([]byte, 8)
+	n, err := conn.Write(b)
+	if err != nil {
+		return err
+	}
+	if n != len(b) {
+		log.Fatal("write reserved bytes length error")
+	}
+
+	br := make([]byte, 8)
+	_, err = io.ReadFull(conn, br)
+	if err != nil {
+		return err
+	}
+	if bytes.Compare(br, b) != 0 {
+		log.Fatal("reserved bytes not 0")
+	}
+
+	return nil
+}
+
+func handshake(ipt ipPort) (net.Conn, error) {
+	conn, err := net.Dial("tcp4", ipt.String())
+	if err != nil {
+		return nil, err
+	}
+	// The handshake starts with character ninteen (decimal) followed by the string 'BitTorrent protocol'
+	s := "BitTorrent protocol"
+	n, err := fmt.Fprintf(conn, "%c%s", 19, s)
+	if err != nil {
+		return nil, err
+	}
+	if n != len(s)+1 {
+		log.Fatal("handshake write failed")
+	}
+	rd := bufio.NewReader(conn)
+	len, err := rd.ReadByte()
+	if err != nil {
+		return nil, err
+	}
+	if len != 19 {
+		log.Fatal("unknown handshake version")
+	}
+	b := make([]byte, 19)
+	_, err = io.ReadFull(rd, b)
+	if err != nil {
+		return nil, err
+	}
+	if string(b) != s {
+		log.Fatalf("unknown version: %s", string(b))
+	}
+	return conn, nil
+}
+
+func keepAliveWithTracker(u *url.URL, metainfo *Metainfo, chPeers chan []ipPort) {
+	q := NewTrackerRequest(metainfo).Query()
 	u.RawQuery = q.Encode()
 	var body []byte
 	if doNotBotherTracker { // for debug
@@ -539,23 +792,8 @@ func IPIntToString(ipInt int) string {
 	}
 	return buffer.String()
 }
-func getAllAnnounce(metainfo map[string]interface{}) (ret []string) {
-	if metainfo["announce"] == nil {
-		log.Fatal("no announce key")
-	}
-	if metainfo["announce-list"] != nil {
-		ret = make([]string, 0, len(metainfo["announce-list"].([]interface{}))+1)
-	} else {
-		ret = make([]string, 0, 1)
-	}
-	ret = append(ret, metainfo["announce"].(string))
-	if metainfo["announce-list"] != nil {
-		announceList := metainfo["announce-list"].([]interface{})
-		for _, announce := range announceList {
-			ret = append(ret, announce.([]interface{})[0].(string))
-		}
-	}
-	return unique(ret)
+func getAllAnnounce(metainfo *Metainfo) (ret []string) {
+	return unique(append(metainfo.AnnounceList, metainfo.Announce))
 }
 func unique(intSlice []string) []string {
 	keys := make(map[string]bool)
@@ -568,7 +806,7 @@ func unique(intSlice []string) []string {
 	}
 	return list
 }
-func parseBTFile(filename string) (map[string]interface{}, error) {
+func parseBTFile(filename string) (*Metainfo, error) {
 	dat, err := ioutil.ReadFile(filename)
 	if err != nil {
 		return nil, err
@@ -577,18 +815,18 @@ func parseBTFile(filename string) (map[string]interface{}, error) {
 	if err != nil {
 		return nil, err
 	}
-	return vv.(map[string]interface{}), nil
+	return NewMetainfoFromMap(vv.(map[string]interface{})), nil
 }
 
-func ensureFile(info map[string]interface{}) error {
-	if info["length"] == nil {
+func ensureFile(info *MetainfoInfo) error {
+	if len(info.Files) != 0 {
 		return ensureFiles(info)
 	}
 	return ensureOneFile(info)
 }
-func ensureFiles(info map[string]interface{}) error {
+func ensureFiles(info *MetainfoInfo) error {
 	r := string(append([]rune(downloadRoot), os.PathSeparator))
-	filename := r + info["name"].(string)
+	filename := r + info.Name
 
 	if _, err := os.Stat(filename); os.IsNotExist(err) {
 		err := os.Mkdir(filename, 0664)
@@ -597,9 +835,8 @@ func ensureFiles(info map[string]interface{}) error {
 		}
 	}
 
-	for _, file := range info["files"].([]interface{}) {
-		f := file.(map[string]interface{})
-		path := f["path"].([]interface{})
+	for _, file := range info.Files {
+		path := file.Path
 		prefix := string(append([]rune(filename), os.PathSeparator))
 		err := ensureFileOneByPathList(prefix, path)
 		if err != nil {
@@ -607,9 +844,9 @@ func ensureFiles(info map[string]interface{}) error {
 		}
 	}
 
-	infoFilename := r + info["name"].(string) + ".btinfo"
+	infoFilename := r + info.Name + ".btinfo"
 	if _, err := os.Stat(infoFilename); os.IsNotExist(err) {
-		piecesLen := len([]byte(info["pieces"].(string))) / infoHashSize
+		piecesLen := len([]byte(info.Pieces)) / infoHashSize
 		bitmapSize := piecesLen / 8
 		if piecesLen%8 != 0 {
 			bitmapSize++
@@ -622,10 +859,9 @@ func ensureFiles(info map[string]interface{}) error {
 	}
 	return nil
 }
-func ensureFileOneByPathList(rootDir string, pathList []interface{}) error {
+func ensureFileOneByPathList(rootDir string, pathList []string) error {
 	r := []rune(rootDir)
-	for i, p := range pathList {
-		path := p.(string)
+	for i, path := range pathList {
 		if i == len(pathList)-1 {
 			r = append(r, []rune(path)...)
 			filename := string(r)
@@ -650,9 +886,9 @@ func ensureFileOneByPathList(rootDir string, pathList []interface{}) error {
 	}
 	return nil
 }
-func ensureOneFile(info map[string]interface{}) error {
+func ensureOneFile(info *MetainfoInfo) error {
 	r := string(append([]rune(downloadRoot), os.PathSeparator))
-	filename := r + info["name"].(string)
+	filename := r + info.Name
 	if _, err := os.Stat(filename); os.IsNotExist(err) {
 		b := make([]byte, 0)
 		err := ioutil.WriteFile(filename, b, 0664)
@@ -661,9 +897,9 @@ func ensureOneFile(info map[string]interface{}) error {
 		}
 	}
 
-	infoFilename := r + info["name"].(string) + ".btinfo"
+	infoFilename := r + info.Name + ".btinfo"
 	if _, err := os.Stat(infoFilename); os.IsNotExist(err) {
-		piecesLen := len([]byte(info["pieces"].(string))) / infoHashSize
+		piecesLen := len([]byte(info.Pieces)) / infoHashSize
 		bitmapSize := piecesLen / 8
 		if piecesLen%8 != 0 {
 			bitmapSize++
@@ -677,7 +913,7 @@ func ensureOneFile(info map[string]interface{}) error {
 	return nil
 }
 
-func udpTracker(address string, metainfo map[string]interface{}) error {
+func udpTracker(address string, metainfo *Metainfo) error {
 	// http://www.bittorrent.org/beps/bep_0015.html
 	raddr, err := net.ResolveUDPAddr("udp", address)
 	if err != nil {
@@ -810,36 +1046,9 @@ func announceRequest(conn *net.UDPConn, transactionID uint32, connectionID uint6
 	return nil
 }
 
-// NewTrackerRequest new a tracker request with current bt file
-func NewTrackerRequest(info map[string]interface{}) *TrackerRequest {
-	r := TrackerRequest{
-		InfoHash:   infoHash(info),
-		PeerID:     peerID(),
-		Port:       availablePort(),
-		Uploaded:   0,
-		Downloaded: 0,
-		Left:       left(info),
-		// Key        uint32
-		NumWant: -1,
-	}
-	return &r
-}
-
-// Query return http query
-func (r *TrackerRequest) Query() url.Values {
-	v := url.Values{}
-	v.Set("info_hash", string(r.InfoHash[:]))
-	v.Set("peer_id", string(r.PeerID[:]))
-	v.Set("port", strconv.Itoa(int(r.Port)))
-	v.Set("uploaded", strconv.Itoa(int(r.Uploaded)))
-	v.Set("downloaded", strconv.Itoa(int(r.Downloaded)))
-	v.Set("left", strconv.Itoa(int(r.Left)))
-	return v
-}
-
-func left(info map[string]interface{}) uint64 {
+func left(info *MetainfoInfo) uint64 {
 	r := string(append([]rune(downloadRoot), os.PathSeparator))
-	infoFilename := r + info["name"].(string) + ".btinfo"
+	infoFilename := r + info.Name + ".btinfo"
 	b, err := ioutil.ReadFile(infoFilename)
 	if err != nil {
 		log.Fatal(err)
