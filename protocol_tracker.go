@@ -155,30 +155,30 @@ func keepAliveWithTracker(u *url.URL, metainfo *Metainfo, chPeers chan []ipPort)
 	fmt.Printf("interval: %d\t(%s)\n", interval, u.String())
 
 	peers := res["peers"]
-	p := make([]*peer, 0)
+	pl := make([]*peer, 0)
 	switch t := peers.(type) {
 	default:
 		fmt.Printf("unexpected type %T\n", t) // %T prints whatever type t has
 		return
 	case string:
-		p, err = compactPeerList(peers.(string))
+		pl, err = compactPeerList(peers.(string))
 		if err != nil {
 			fmt.Printf("parse compact peer list error: %v\n", err)
 			return
 		}
 	case map[string]interface{}:
-		p, err = peerList(peers.(map[string]interface{}))
+		pl, err = peerList(peers.(map[string]interface{}))
 		if err != nil {
 			fmt.Printf("parse compact peer list error: %v\n", err)
 			return
 		}
 	}
 
-	if len(p) != 0 {
+	if len(pl) != 0 {
 		peersMapMutex.Lock()
-		for _, ipt := range p {
-			if peersMap[ipt.Uint64()] == nil {
-				peersMap[ipt.Uint64()] = ipt
+		for _, pp := range pl {
+			if peersMap[pp.Uint64()] == nil {
+				peersMap[pp.Uint64()] = pp
 			}
 		}
 		peersMapMutex.Unlock()
