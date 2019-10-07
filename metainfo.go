@@ -1,5 +1,7 @@
 package gobt
 
+import "errors"
+
 // Metainfo Metainfo files (also known as .torrent files)
 type Metainfo struct {
 	Announce     string
@@ -69,6 +71,16 @@ func (info *MetainfoInfo) bitfield() (bitfield, error) {
 }
 
 type peerID [peerIDSize]byte
+
+func peerIDFromBytes(b []byte) (peerID, error) {
+	var pid peerID
+	if len(b) != peerIDSize {
+		return pid, errors.New("peer id is not length 20")
+	}
+	copy(pid[:], b)
+	return pid, nil
+}
+
 type hash [hashSize]byte
 
 func stringSlice(a []interface{}) []string {
