@@ -231,23 +231,24 @@ func sendCmd(conn net.Conn, t uint32) error {
 }
 func alternatingStream(conn net.Conn, info *MetainfoInfo) error {
 	// randomly pick a pieace to download
-	bf, err := bitfieldFromFile(info.filename())
-	if err != nil {
-		return err
-	}
-
-	index := 0
-	start := rand.Intn(info.Length)
-	cnt := info.piecesCount()
-	for i := 0; i < cnt; i++ {
-		ii := (start + i) % cnt
-		if bf.Bit(ii) == 0 {
-			index = ii
-		}
-	}
-
+	index := randIndex(info)
 	sendMessage(conn, requestMessage(int32(index)))
 	return nil
+}
+
+// return -1 if all bit set
+func randIndex(info *MetainfoInfo) int {
+	cnt := info.piecesCount()
+	start := rand.Intn(cnt)
+	for i := 0; i < cnt; i++ {
+		ii := (start + i) % cnt
+		gBitFieldMutex.RLock()
+		if gBitField.Bit(ii) == 0 {
+			return ii
+		}
+		gBitFieldMutex.RUnlock()
+	}
+	return -1
 }
 
 // var pieceInnerIndex int32 = 0
