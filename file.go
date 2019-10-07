@@ -86,7 +86,6 @@ func writeToFilesDo(files []File, offset int64, piece []byte) error {
 			}
 		}
 
-		var n int
 		b := piece
 		if offset+int64(len(piece)) > file.Length {
 			// 0----offset----file.Length----len(piece)
@@ -193,7 +192,7 @@ func ensureOneFile(info *MetainfoInfo) (bf bitfield, err error) {
 
 	return ensureInfoFile(info.infofilename(), info.piecesCount())
 }
-func checkHash(info *MetainfoInfo, index int, ih hash) (bool, error) {
+func checkHash(info *MetainfoInfo, index int, ih hash) (flag bool, err error) {
 	b := make([]byte, 0, info.PieceLength)
 	if len(info.Files) == 0 {
 		// single file mode
@@ -213,7 +212,7 @@ func checkHash(info *MetainfoInfo, index int, ih hash) (bool, error) {
 	} else {
 		// multi file mode
 		// seek to start
-		b, err := readSome(info, index, 0, int64(info.PieceLength))
+		b, err = readSome(info, index, 0, int64(info.PieceLength))
 		if err != nil {
 			return false, err
 		}

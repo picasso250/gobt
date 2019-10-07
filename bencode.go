@@ -232,7 +232,7 @@ func parseString(b []byte) (string, []byte, error) {
 	b = b[i+1:]
 	return string(b[:len]), b[len:], nil
 }
-func parseInt(b []byte) (int, []byte, error) {
+func parseInt(b []byte) (int64, []byte, error) {
 	if b[0] != 'i' {
 		return 0, nil, errors.New("integer not start with i")
 	}
@@ -241,7 +241,7 @@ func parseInt(b []byte) (int, []byte, error) {
 		return 0, nil, errors.New("integer not end with e")
 	}
 	// todo Integers have no size limitation
-	i, err := strconv.Atoi(string(b[1:idx]))
+	i, err := strconv.ParseInt(string(b[1:idx]), 10, 64)
 	if err != nil {
 		return 0, nil, err
 	}
