@@ -12,7 +12,7 @@ func writeInteger(w io.Writer, i interface{}) error {
 	return binary.Write(w, binary.BigEndian, i)
 }
 
-func readUint32(conn *net.UDPConn) (uint32, error) {
+func readUint32(conn io.Reader) (uint32, error) {
 	var i uint32
 	err := binary.Read(conn, binary.BigEndian, &i)
 	if err != nil {
