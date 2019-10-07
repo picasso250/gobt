@@ -153,7 +153,8 @@ func checkHash(info *MetainfoInfo, index int, ih hash) (bool, error) {
 			return false, err
 		}
 	}
-	return bytes.Compare(sha1.Sum(b), ih), nil
+	s := sha1.Sum(b)
+	return bytes.Compare(s[:], ih[:]) == 0, nil
 }
 func readPieceLength(info *MetainfoInfo, index int, offset int) int {
 	length := info.PieceLength
