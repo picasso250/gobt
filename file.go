@@ -30,9 +30,9 @@ func NewFileFromMap(m map[string]interface{}) File {
 	}
 }
 
-func ensureFile(info *MetainfoInfo) error {
+func ensureFile(info *MetainfoInfo) (bitfield, error) {
 	if err := os.Chdir(downloadRoot); err != nil {
-		return err
+		return nil, err
 	}
 
 	if len(info.Files) != 0 {
@@ -44,17 +44,17 @@ func ensureFile(info *MetainfoInfo) error {
 func pathBuild(path ...string) string {
 	return strings.Join(path, string([]rune([]rune{os.PathSeparator})))
 }
-func ensureFiles(info *MetainfoInfo) error {
+func ensureFiles(info *MetainfoInfo) (bf bitfield, err error) {
 	filename := info.filename()
 	if _, err := os.Stat(filename); os.IsNotExist(err) {
 		err := os.Mkdir(filename, 0664)
 		if err != nil {
-			return err
+			return nil, err
 		}
 	}
 
 	if err := os.Chdir(filename); err != nil {
-		return err
+		return nil, err
 	}
 
 	for _, file := range info.Files {
@@ -62,18 +62,19 @@ func ensureFiles(info *MetainfoInfo) error {
 		prefix := string(append([]rune(filename), os.PathSeparator))
 		err := ensureFileOneByPathList(prefix, path)
 		if err != nil {
-			return err
+			return nil, err
 		}
 	}
 
 	infoFilename := info.infofilename()
 	if _, err := os.Stat(infoFilename); os.IsNotExist(err) {
-		err := allZeroBitField(info.piecesCount()).ToFile(infoFilename)
+		bf = allZeroBitField(info.piecesCount())
+		err := bf.ToFile(infoFilename)
 		if err != nil {
-			return err
+			return nil, err
 		}
 	}
-	return nil
+	return
 }
 func ensureFileOneByPathList(rootDir string, pathList []string) error {
 	r := []rune(rootDir)
@@ -102,24 +103,25 @@ func ensureFileOneByPathList(rootDir string, pathList []string) error {
 	}
 	return nil
 }
-func ensureOneFile(info *MetainfoInfo) error {
+func ensureOneFile(info *MetainfoInfo) (bf bitfield, err error) {
 	filename := info.filename()
 	if _, err := os.Stat(filename); os.IsNotExist(err) {
 		b := make([]byte, 0)
 		err := ioutil.WriteFile(filename, b, 0664)
 		if err != nil {
-			return err
+			return nil, err
 		}
 	}
 
 	infoFilename := info.infofilename()
 	if _, err := os.Stat(infoFilename); os.IsNotExist(err) {
-		err := allZeroBitField(info.piecesCount()).ToFile(infoFilename)
+		bf = allZeroBitField(info.piecesCount())
+		err := bf.ToFile(infoFilename)
 		if err != nil {
-			return err
+			return nil, err
 		}
 	}
-	return nil
+	return
 }
 func checkHash(info *MetainfoInfo, index int, ih hash) (bool, error) {
 	b := make([]byte, 0, info.PieceLength)
