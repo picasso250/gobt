@@ -124,9 +124,9 @@ func (p *peer) peerMessages(info *MetainfoInfo) error {
 	}
 	p.AmInterested = 1
 
-	return p.loop()
+	return p.loop(info)
 }
-func (p *peer) loop() error {
+func (p *peer) loop(info *MetainfoInfo) error {
 	for {
 		t, b, err := readNextMsg(p.Conn)
 		if err != nil {
@@ -175,9 +175,16 @@ func (p *peer) doRequest(b []byte, info *MetainfoInfo) error {
 	if err != nil {
 		return err
 	}
+
 	// if we have
 	if gBitField.Bit(int(index)) == 1 {
+
 		b, err := readSome(info, int(index), int64(begin), int64(length))
+		if err != nil {
+			return err
+		}
+
+		err = sendTypeMessage(p.Conn, typePiece, bytes.NewBuffer(b))
 		if err != nil {
 			return err
 		}
