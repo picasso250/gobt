@@ -144,9 +144,56 @@ func (p *peer) loop() error {
 		case typeNotInterested:
 			p.PeerInterested = 0
 		case typeHave:
-
+			err = p.doHave(b)
+			if err != nil {
+				return err
+			}
+		case typeBitfield:
+			err = p.doBitfield(b)
+			if err != nil {
+				return err
+			}
+		case typeRequest:
+			err = p.doRequest(b)
+			if err != nil {
+				return err
+			}
 		}
 	}
+}
+func (p *peer) doRequest(b []byte) error {
+	buf := bytes.NewBuffer(b)
+	index, err := readUint32(buf)
+	if err != nil {
+		return err
+	}
+	begin, err := readUint32(buf)
+	if err != nil {
+		return err
+	}
+	piece := buf.Bytes()
+	err = writeToFile(index, begin, piece)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+func (p *peer) doBitfield(b []byte) error {
+	if len(b) != len(gBitField) {
+		return errors.New("bitfield length mismatch")
+	}
+	p.Bitfield = b
+	return nil
+}
+func (p *peer) doHave(b []byte) error {
+	buf := bytes.NewBuffer(b)
+	index, err := readUint32(buf)
+	if err != nil {
+		return err
+	}
+	p.Bitfield.SetBit(int(index), 1)
+	return nil
 }
 func readNextMsg(conn net.Conn) (uint32, []byte, error) {
 	// Messages of length zero are keepalives, and ignored
