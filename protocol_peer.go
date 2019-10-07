@@ -16,7 +16,7 @@ const requestLength = uint32(1 << 14) // All current implementations use 2^14 (1
 
 // non-keepalive messages start with a single byte which gives their type
 const (
-	typeChoke = iota
+	typeChoke uint32 = iota
 	typeUnchoke
 	typeInterested
 	typeNotInterested
@@ -64,6 +64,8 @@ func (p *peer) String() string {
 
 func (p *peer) start(metainfo *Metainfo) {
 	var err error
+
+	// maybe we don't need to lock here, but who knows
 	peersMapMutex.Lock()
 	p.Conn, err = net.Dial("tcp4", p.String())
 	peersMapMutex.Unlock()
@@ -73,7 +75,7 @@ func (p *peer) start(metainfo *Metainfo) {
 	}
 	defer p.Conn.Close()
 
-	err = handshake(p.Conn, p, metainfo)
+	err = handshake(p, metainfo)
 	if err != nil {
 		fmt.Printf("%s handshake error: %s", p, err)
 		return
@@ -86,15 +88,16 @@ func (p *peer) start(metainfo *Metainfo) {
 		heartBeatChan <- 1
 	}()
 
-	err = peerMessages(p.Conn, metainfo.Info)
+	err = p.peerMessages(metainfo.Info)
 	if err != nil {
 		fmt.Printf("peer messages error: %s\n", err)
 		return
 	}
-
 }
 
-func peerMessages(conn net.Conn, info *MetainfoInfo) error {
+func (p *peer) peerMessages(info *MetainfoInfo) error {
+	conn := p.Conn
+
 	msg, err := buildpeerMessageBitfield(info)
 	if err != nil {
 		return err
@@ -104,11 +107,32 @@ func peerMessages(conn net.Conn, info *MetainfoInfo) error {
 		return err
 	}
 
-	err = alternatingStream(conn, info)
+	// for simplicity we are interested in every one and do not choke anyone
+	err = sendCmd(conn, typeUnchoke)
 	if err != nil {
 		return err
 	}
-	return nil
+	p.AmChoking = 0
+
+	err = sendCmd(conn, typeInterested)
+	if err != nil {
+		return err
+	}
+	p.AmInterested = 1
+
+	return p.loop()
+}
+func (p *peer) loop() error {
+	for {
+
+	}
+}
+func sendCmd(conn net.Conn, t uint32) error {
+	err := writeInteger(conn, uint32(4))
+	if err != nil {
+		return err
+	}
+	return writeInteger(conn, t)
 }
 func alternatingStream(conn net.Conn, info *MetainfoInfo) error {
 	// randomly pick a pieace to download
@@ -131,7 +155,7 @@ func alternatingStream(conn net.Conn, info *MetainfoInfo) error {
 	return nil
 }
 
-var pieceInnerIndex int32 = 0
+// var pieceInnerIndex int32 = 0
 
 func requestMessage(index int32) *bytes.Buffer {
 	b := new(bytes.Buffer)
@@ -140,7 +164,7 @@ func requestMessage(index int32) *bytes.Buffer {
 	if err != nil {
 		log.Fatal(err)
 	}
-
+	pieceInnerIndex := 0
 	err = writeInteger(b, pieceInnerIndex)
 	if err != nil {
 		log.Fatal(err)
@@ -186,7 +210,9 @@ func buildpeerMessageBitfield(info *MetainfoInfo) (*bytes.Buffer, error) {
 	return buf, nil
 }
 
-func handshake(conn net.Conn, p *peer, metainfo *Metainfo) error {
+func handshake(p *peer, metainfo *Metainfo) error {
+	conn := p.Conn
+
 	// The handshake starts with character ninteen (decimal) followed by the string 'BitTorrent protocol'
 	err := protocol(conn)
 	if err != nil {
