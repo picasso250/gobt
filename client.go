@@ -24,7 +24,7 @@ import (
 const doNotBotherTracker = true // for debug use
 
 // const
-const infoHashSize = 20
+const hashSize = 20
 const peerIDSize = 20
 
 // settings
@@ -32,10 +32,13 @@ var maxPeerCount int
 var downloadRoot string
 
 func init() {
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
+
 	maxPeerCount = *flag.Int("max-peer-count", 100, "how many peers to connect")
 	downloadRoot = *flag.String("root", ".", "download root directory")
 
 	myPeerID = genPeerID()
+
 }
 
 var byteTable = map[byte]int{
@@ -299,7 +302,7 @@ var byteTable = map[byte]int{
 
 var meChoked = true // Choking is a notification that no data will be sent until unchoking happens
 var meInterested = false
-var myPeerID [peerIDSize]byte
+var myPeerID peerID
 var peersStartedMap map[uint64]bool
 var peersStartedMapMutex sync.RWMutex
 var peersMap map[uint64]peer
@@ -307,8 +310,8 @@ var peersMapMutex sync.RWMutex
 
 // TrackerRequest Tracker GET requests
 type TrackerRequest struct {
-	InfoHash   [infoHashSize]byte
-	PeerID     [peerIDSize]byte
+	InfoHash   hash
+	PeerID     peerID
 	IP         uint32
 	Port       uint16
 	Uploaded   uint64
@@ -855,7 +858,7 @@ func genPeerID() [peerIDSize]byte {
 	copy(a[:], b[:peerIDSize])
 	return a
 }
-func infoHash(info map[string]interface{}) [infoHashSize]byte {
+func infoHash(info map[string]interface{}) hash {
 	s, err := Encode(info)
 	if err != nil {
 		log.Fatal("info encode fail")

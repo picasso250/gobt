@@ -1,8 +1,9 @@
 package gobt
 
 import (
+	"bytes"
 	"crypto/sha1"
-	"fmt"
+	"errors"
 	"io"
 	"io/ioutil"
 	"log"
@@ -67,7 +68,7 @@ func ensureFiles(info *MetainfoInfo) error {
 
 	infoFilename := info.infofilename()
 	if _, err := os.Stat(infoFilename); os.IsNotExist(err) {
-		piecesCount := len([]byte(info.Pieces)) / infoHashSize
+		piecesCount := len([]byte(info.Pieces)) / hashSize
 		err := allZeroBitField(piecesCount).ToFile(infoFilename)
 		if err != nil {
 			return err
@@ -114,7 +115,7 @@ func ensureOneFile(info *MetainfoInfo) error {
 
 	infoFilename := info.infofilename()
 	if _, err := os.Stat(infoFilename); os.IsNotExist(err) {
-		piecesCount := len([]byte(info.Pieces)) / infoHashSize
+		piecesCount := len([]byte(info.Pieces)) / hashSize
 		err := allZeroBitField(piecesCount).ToFile(infoFilename)
 		if err != nil {
 			return err
@@ -122,10 +123,10 @@ func ensureOneFile(info *MetainfoInfo) error {
 	}
 	return nil
 }
-func checkHash(info *MetainfoInfo, index int) bool {
+func checkHash(info *MetainfoInfo, index int, ih hash) (bool, error) {
+	b := make([]byte, 0, info.PieceLength)
 	if len(info.Files) == 0 {
 		// single file mode
-		b := make([]byte, 0, info.PieceLength)
 		file, err := os.Open(info.filename()) // For read access.
 		if err != nil {
 			log.Fatal(err)
@@ -142,16 +143,72 @@ func checkHash(info *MetainfoInfo, index int) bool {
 	} else {
 		// multi file mode
 		// seek to start
-		i := index
-		for _, f := range info.Files {
-			if index > 0 {
-				if index >= f.Length {
-					continue
-				}
-				os.Fopen(f.longPath())
-			}
+		fileIndex, offset, err := seekStart(info, index)
+		if err != nil {
+			return false, err
+		}
+		length := readPieceLength(info, fileIndex, offset)
+		b, err = readMuliFileBlock(info.Files[fileIndex:], int64(offset), length)
+		if err != nil {
+			return false, err
 		}
 	}
-	data := []byte("This page intentionally left blank.")
-	fmt.Printf("% x", sha1.Sum(data))
+	return bytes.Compare(sha1.Sum(b), ih), nil
+}
+func readPieceLength(info *MetainfoInfo, index int, offset int) int {
+	length := info.PieceLength
+	sum := 0
+	for _, file := range info.Files[index:] {
+		sum += file.Length
+	}
+	sum -= offset
+	if sum < length {
+		length = sum
+	}
+	return length
+}
+func readMuliFileBlock(fileList []File, offset int64, length int) ([]byte, error) {
+	if length <= 0 {
+		log.Fatalf("invalid length %d", length)
+	}
+	b := make([]byte, length)
+	bufStart := 0
+	for _, file := range fileList {
+		f, err := os.Open(file.longPath())
+		if err != nil {
+			return nil, err
+		}
+		if offset != 0 {
+			_, err = f.Seek(offset, 0)
+			if err != nil {
+				return nil, err
+			}
+		}
+		n, err := io.ReadFull(f, b[bufStart:])
+		if err != nil {
+			if err != io.ErrUnexpectedEOF {
+				return nil, err
+			}
+		}
+		bufStart += n
+		if bufStart == length-1 {
+			break
+		}
+	}
+	if bufStart != length-1 {
+		return nil, errors.New("not enough data read")
+	}
+	return b, nil
+}
+func seekStart(info *MetainfoInfo, index int) (i int, pos int, err error) {
+	for i, f := range info.Files {
+		if index == 0 {
+			return i, 0, nil
+		}
+		if index < f.Length {
+			return i, index, nil
+		}
+		index -= f.Length
+	}
+	return 0, 0, errors.New("index out range")
 }
