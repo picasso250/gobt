@@ -14,6 +14,7 @@ import (
 )
 
 const requestLength = uint32(1 << 14) // All current implementations use 2^14 (16 kiB)
+const chanWaitTimeout = time.Millisecond * 10
 
 // non-keepalive messages start with a single byte which gives their type
 const (
@@ -129,14 +130,26 @@ func (p *peer) peerMessages(info *MetainfoInfo) error {
 	return p.loop(info)
 }
 func (p *peer) loop(info *MetainfoInfo) (err error) {
+	errOccur := make(chan error)
 	for {
+		select {
+		case err := <-errOccur:
+			return err
+		case <-time.After(chanWaitTimeout):
+			// go on
+		}
+
 		if p.PeerChoking == 0 {
 			// send him message for request
-			err = requestPeer(p, info)
-			if err != nil {
-				return err
-			}
+			// it is safe to goroutine
+			go func() {
+				err = requestPeer(p, info)
+				if err != nil {
+					errOccur <- err
+				}
+			}()
 		}
+
 		if p.AmInterested == 0 {
 			time.Sleep(time.Second)
 			continue
@@ -164,7 +177,7 @@ func (p *peer) loop(info *MetainfoInfo) (err error) {
 		case typeBitfield:
 			err = p.doBitfield(b)
 		case typeRequest:
-			err = p.doRequest(b, info)
+			err = p.doRequest(b, info, errOccur)
 		case typeCancel:
 			p.doCancel()
 		case typePiece:
@@ -228,7 +241,7 @@ func (p *peer) doPiece(b []byte, info *MetainfoInfo) (err error) {
 func (p *peer) doCancel() {
 	p.WillCancel <- 1
 }
-func (p *peer) doRequest(b []byte, info *MetainfoInfo) error {
+func (p *peer) doRequest(b []byte, info *MetainfoInfo, errOccur chan error) error {
 	buf := bytes.NewBuffer(b)
 	index, err := readUint32(buf)
 	if err != nil {
@@ -254,7 +267,7 @@ func (p *peer) doRequest(b []byte, info *MetainfoInfo) error {
 		go func() {
 			err = p.sendTypeMessageWhile(typePiece, (b))
 			if err != nil {
-				fmt.Printf("sending error %s\n", err)
+				errOccur <- err
 			}
 		}()
 
@@ -275,20 +288,30 @@ func (p *peer) sendTypeMessageWhile(t uint32, msg []byte) error {
 	}
 
 	for {
-		err = conn.SetDeadline(time.Now().Add(time.Second))
-		if err != nil {
-			return err
-		}
-		n, err := conn.Write(msg)
-		if err != nil {
-			return err
-		}
+
 		select {
 		case <-willCancel:
 			return nil
-		case <-time.After(time.Millisecond):
+		case <-time.After(chanWaitTimeout):
 			// we go on
 		}
+
+		err = conn.SetDeadline(time.Now().Add(time.Millisecond * 100))
+		if err != nil {
+			return err
+		}
+
+		n, err := conn.Write(msg)
+		if err != nil {
+			if oe, ok := err.(net.Error); ok {
+				if !oe.Timeout() {
+					return err
+				}
+			} else {
+				return err
+			}
+		}
+
 		msg = msg[n:]
 		if len(msg) == 0 {
 			break
