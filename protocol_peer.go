@@ -156,9 +156,34 @@ func (p *peer) loop(info *MetainfoInfo) (err error) {
 			err = p.doRequest(b, info)
 		case typeCancel:
 			p.doCancel()
+		case typePiece:
+			err = p.doPiece(b, info)
+		}
+		if err != nil {
+			return err
 		}
 	}
 }
+
+func (p *peer) doPiece(b []byte, info *MetainfoInfo) (err error) {
+
+	buf := bytes.NewBuffer(b)
+
+	index, err := readUint32(buf)
+	if err != nil {
+		return err
+	}
+
+	begin, err := readUint32(buf)
+	if err != nil {
+		return err
+	}
+
+	piece := buf.Bytes()
+
+	return writeToFile(info, int(index), int64(begin), piece)
+}
+
 func (p *peer) doCancel() {
 	p.WillCancel <- 1
 }
@@ -185,7 +210,7 @@ func (p *peer) doRequest(b []byte, info *MetainfoInfo) error {
 			return err
 		}
 
-		err = sendTypeMessage(p.Conn, typePiece, bytes.NewBuffer(b))
+		err = p.sendTypeMessageWhile(typePiece, (b))
 		if err != nil {
 			return err
 		}
@@ -198,6 +223,39 @@ func (p *peer) doRequest(b []byte, info *MetainfoInfo) error {
 	if err != nil {
 		return err
 	}
+	return nil
+}
+
+func (p *peer) sendTypeMessageWhile(t uint32, msg []byte) error {
+	conn := p.Conn
+	willCancel := p.WillCancel
+
+	err := writeIntegers(conn, uint32(len(msg)+4), t)
+	if err != nil {
+		return err
+	}
+
+	for {
+		err = conn.SetDeadline(time.Now().Add(time.Second))
+		if err != nil {
+			return err
+		}
+		n, err := conn.Write(msg)
+		if err != nil {
+			return err
+		}
+		select {
+		case <-willCancel:
+			return nil
+		case <-time.After(time.Millisecond):
+			// we go on
+		}
+		msg = msg[n:]
+		if len(msg) == 0 {
+			break
+		}
+	}
+
 	return nil
 }
 func (p *peer) doBitfield(b []byte) error {
@@ -307,6 +365,7 @@ func sendMessage(conn net.Conn, msg *bytes.Buffer) error {
 	}
 	return nil
 }
+
 func sendTypeMessage(conn net.Conn, t uint32, msg *bytes.Buffer) error {
 	err := writeIntegers(conn, uint32(msg.Len()+4), t)
 	if err != nil {
