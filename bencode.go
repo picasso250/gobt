@@ -2,15 +2,24 @@ package gobt
 
 import (
 	"bytes"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
+	"os"
 	"reflect"
 	"sort"
 	"strconv"
+	"unicode"
 )
 
 // PrintMetainfo print the metainfo
+// todo make it more useful
 func PrintMetainfo(m map[string]interface{}) {
+
+	printValue(m)
+
 	for k, v := range m {
 		switch v := v.(type) {
 		default:
@@ -18,7 +27,10 @@ func PrintMetainfo(m map[string]interface{}) {
 				fmt.Printf("%s: ", k)
 				fmt.Printf("unexpected type %T, %v\n", v, v) // %T prints whatever type v has
 			}
-		case string, int:
+		case []byte:
+			fmt.Printf("%s: ", k)
+			printStringln(v)
+		case int:
 			fmt.Printf("%s: ", k)
 			fmt.Println(v)
 		}
@@ -31,16 +43,15 @@ func PrintMetainfo(m map[string]interface{}) {
 	fmt.Println("=== info === ")
 
 	info := m["info"].(map[string]interface{})
-	fmt.Printf("piece length: ")
-	fmt.Println(info["piece length"])
 
-	fmt.Printf("pieces: %d length string\n", len(info["pieces"].(string)))
+	fmt.Printf("pieces: %d length string\n", len(info["pieces"].([]byte)))
 
 	if info["files"] != nil {
 		fmt.Printf("--- files ---\n")
-		for _, file := range info["files"].([]map[string]interface{}) {
-			fmt.Printf("%d ", file["length"].(int))
-			fmt.Println(file["path"].([]string))
+		for _, f := range info["files"].([]interface{}) {
+			file := f.(map[string]interface{})
+			fmt.Printf("%d ", file["length"].(int64))
+			fmt.Println(toStringSlice(file["path"].([]interface{})))
 		}
 	}
 	for k, v := range info {
@@ -48,13 +59,86 @@ func PrintMetainfo(m map[string]interface{}) {
 		default:
 			fmt.Printf("%s: ", k)
 			fmt.Printf("unexpected type %T, %v\n", v, v) // %T prints whatever type v has
-		case string, int:
-			if k != "piece length" && k != "pieces" {
-				fmt.Printf("%s: ", k)
-				fmt.Println(v)
-			}
+		case int:
+			fmt.Printf("%s: ", k)
+			fmt.Println(v)
+		case []byte:
+			fmt.Printf("%s: ", k)
+			printStringln(v)
 		}
 	}
+}
+func printValue(v interface{}) {
+	v = prepareValueIter(v)
+	e := json.NewEncoder(os.Stdout)
+	e.SetIndent("", "  ")
+	e.Encode(v)
+}
+func prepareValueIter(v interface{}) interface{} {
+	switch v := v.(type) {
+	default:
+		return v
+	case []byte:
+		if isPrint(v) {
+			return string(v)
+		}
+		fmt.Printf("not printable\n")
+		return toHex(v)
+	case int64, int:
+		return v
+	case []interface{}:
+		ret := make([]interface{}, len(v))
+		for i, v := range v {
+			ret[i] = prepareValueIter(v)
+		}
+		return ret
+	case map[string]interface{}:
+		ret := make(map[string]interface{}, len(v))
+		for k, v := range v {
+			fmt.Println(k)
+			ret[k] = prepareValueIter(v)
+		}
+		return ret
+	}
+}
+func toHex(src []byte) string {
+
+	dst := make([]byte, hex.DecodedLen(len(src)))
+	n, err := hex.Decode(dst, src)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return string(dst[:n])
+}
+func printStringln(b []byte) {
+	if isPrint(b) {
+		fmt.Println(string(b))
+	} else {
+		fmt.Println(b)
+	}
+}
+func printString(b []byte) {
+	if isPrint(b) {
+		fmt.Print(string(b))
+	} else {
+		fmt.Print(b)
+	}
+}
+func toStringSlice(v []interface{}) []string {
+	ret := make([]string, len(v))
+	for i, v := range v {
+		ret[i] = string(v.([]byte))
+	}
+	return ret
+}
+func isPrint(b []byte) bool {
+	for _, c := range []rune(string(b)) {
+		if !unicode.IsPrint(c) {
+			return false
+		}
+	}
+	return true
 }
 
 // Encode bencoding
