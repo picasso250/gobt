@@ -73,7 +73,11 @@ func (p *peer) String() string {
 	return p.Addr.String()
 }
 
-func (p *peer) startListen(metainfo *Metainfo) {
+func (p *peer) handleConnection(metainfo *Metainfo) {
+	defer p.Conn.Close()
+	p.startListen(metainfo)
+}
+func (p *peer) startHandle(metainfo *Metainfo) {
 	var err error
 
 	// maybe we don't need to lock here, but who knows
@@ -85,7 +89,12 @@ func (p *peer) startListen(metainfo *Metainfo) {
 		fmt.Printf("dial tcp %s error: %s\n", p.Addr.String(), err)
 		return
 	}
-	defer p.Conn.Close()
+
+	p.handleConnection(metainfo)
+
+}
+func (p *peer) startListen(metainfo *Metainfo) {
+	var err error
 
 	err = handshake(p, metainfo)
 	if err != nil {
@@ -93,11 +102,11 @@ func (p *peer) startListen(metainfo *Metainfo) {
 		return
 	}
 
-	heartBeatChan := make(chan int)
-	go heartBeat(p.Conn, heartBeatChan)
+	heartBeatWillStop := make(chan int)
+	go p.heartBeat(heartBeatWillStop)
 	defer func() {
 		// inform heart beat to stop
-		heartBeatChan <- 1
+		heartBeatWillStop <- 1
 	}()
 
 	err = p.peerMessages(metainfo.Info)
@@ -653,16 +662,13 @@ func reservedBytes(conn net.Conn) error {
 	return nil
 }
 
-func heartBeat(conn net.Conn, ch chan int) {
+func (p *peer) heartBeat(willStop chan int) {
 	for {
 		select {
 		case <-time.After(2 * time.Minute):
-			err := writeInteger(conn, 0)
-			if err != nil {
-				fmt.Printf("heart beat error: %s", err)
-				return
-			}
-		case <-ch:
+			p.ToSend <- messageToSend{nil, nil}
+
+		case <-willStop:
 			return
 		}
 	}

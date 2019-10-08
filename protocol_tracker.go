@@ -176,13 +176,9 @@ func keepAliveWithTracker(u *url.URL, metainfo *Metainfo, port uint16) {
 
 	// todo limit the number of peers
 	if len(pl) != 0 {
-		peersMapMutex.Lock()
 		for _, pp := range pl {
-			if peersMap[pp.String()] == nil {
-				peersMap[pp.String()] = pp
-			}
+			gPeersToStart <- pp
 		}
-		peersMapMutex.Unlock()
 	}
 
 	time.Sleep(time.Duration(interval) * (time.Second))

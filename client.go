@@ -14,7 +14,6 @@ import (
 	"net"
 	"strconv"
 	"sync"
-	"time"
 )
 
 const doNotBotherTracker = true // for debug use
@@ -34,6 +33,7 @@ func init() {
 	downloadRoot = *flag.String("root", ".", "download root directory")
 
 	myPeerID = genPeerID()
+	gPeersToStart = make(chan *peer, 10)
 
 }
 
@@ -307,6 +307,7 @@ var gBitField *bitfield
 var peersStateMap map[string]int
 var peersMap map[string]*peer
 var peersMapMutex sync.RWMutex
+var gPeersToStart chan *peer
 
 type ipPort struct {
 	IP   uint32
@@ -357,36 +358,33 @@ func Download(filename string) {
 			if err != nil {
 				log.Fatal(err)
 			}
-			go handleConnection(conn)
+			go handleConnection(conn, metaInfo)
 		}
 	}()
 
 	// do peers
 	for {
+		peer := <-gPeersToStart
+
 		peersMapMutex.RLock()
-		for _, peer := range peersMap {
-			if peer.Conn == nil {
-				go peer.startListen(metaInfo)
-				go peer.startSend(metaInfo)
-			}
+		if peersMap[peer.String()] == nil {
+			peersMap[peer.String()] = peer
+			go peer.startHandle(metaInfo)
 		}
 		peersMapMutex.RUnlock()
-		time.Sleep(time.Second)
 	}
 
 }
-func handleConnection(conn net.Conn) {
+func handleConnection(conn net.Conn, metaInfo *Metainfo) {
 	addr := conn.RemoteAddr()
 	peersMapMutex.RLock()
 	defer peersMapMutex.RUnlock()
-	if peersMap[addr.String()]== nil{
+	if peersMap[addr.String()] == nil {
 		var pid peerID
-		newPeer(addr,pid)
-		go handleConnectionDo(conn)
+		p := newPeer(addr, pid)
+		p.Conn = conn
+		go p.handleConnection(metaInfo)
 	}
-}
-func handleConnectionDo(conn net.Conn) {
-
 }
 
 func compactPeerList(b []byte, piecesCount int) ([]*peer, error) {
