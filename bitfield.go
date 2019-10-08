@@ -40,3 +40,9 @@ func bitfieldFromFile(filename string) (bitfield, error) {
 func (b bitfield) ToFile(filename string) error {
 	return ioutil.WriteFile(filename, b, 0664)
 }
+func (b bitfield) SetAndSave(index int, filename string) error {
+	gBitFieldMutex.Lock()
+	defer gBitFieldMutex.Unlock()
+	gBitField.SetBit(index, 1)
+	return gBitField.ToFile(filename)
+}

@@ -132,6 +132,10 @@ func (p *peer) loop(info *MetainfoInfo) (err error) {
 	for {
 		if p.PeerChoking == 0 {
 			// send him message for request
+			err = requestPeer(p, info)
+			if err != nil {
+				return err
+			}
 		}
 		if p.AmInterested == 0 {
 			time.Sleep(time.Second)
@@ -211,8 +215,7 @@ func (p *peer) doPiece(b []byte, info *MetainfoInfo) (err error) {
 			return err
 		}
 		if isValid {
-			gBitField.SetBit(int(index), 1)
-			err = gBitField.ToFile(info.infofilename())
+			err = gBitField.SetAndSave(int(index), info.infofilename())
 			if err != nil {
 				return err
 			}
@@ -260,6 +263,8 @@ func (p *peer) doRequest(b []byte, info *MetainfoInfo) error {
 }
 
 func (p *peer) sendTypeMessageWhile(t uint32, msg []byte) error {
+
+	// these two are goroutine safe
 	conn := p.Conn
 	willCancel := p.WillCancel
 
@@ -343,11 +348,10 @@ func sendCmd(conn net.Conn, t uint32) error {
 	return writeInteger(conn, t)
 }
 
-//TODO send
-func alternatingStream(conn net.Conn, info *MetainfoInfo) error {
+func requestPeer(p *peer, info *MetainfoInfo) error {
 	// randomly pick a pieace to download
 	index := randIndex(info)
-	sendMessage(conn, requestMessage(int32(index)))
+	sendMessage(p.Conn, requestMessage(int32(index)))
 	return nil
 }
 
