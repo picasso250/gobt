@@ -336,7 +336,7 @@ func Download(filename string) {
 		fmt.Printf("file error: %s\n", err)
 	}
 
-	go trackerProtocol(metaInfo)
+	trackerProtocol(metaInfo)
 
 	go doPeers(metaInfo)
 
