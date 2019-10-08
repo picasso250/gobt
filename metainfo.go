@@ -65,7 +65,7 @@ func (info *MetainfoInfo) filename() string {
 func (info *MetainfoInfo) infofilename() string {
 	return pathBuild(downloadRoot, info.Name+".btinfo")
 }
-func (info *MetainfoInfo) bitfield() (bitfield, error) {
+func (info *MetainfoInfo) bitfield() (*bitfield, error) {
 	return bitfieldFromFile(info.infofilename())
 }
 

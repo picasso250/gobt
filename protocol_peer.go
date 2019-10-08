@@ -39,7 +39,7 @@ type peer struct {
 	PeerInterested uint32 // 远程peer对本客户端感兴趣。
 
 	Conn           net.Conn
-	Bitfield       bitfield
+	Bitfield       *bitfield
 	WillCancel     chan int
 	PieceOffsetMap map[uint32]int // piece start 0----piece offset----piece end
 }
@@ -215,7 +215,8 @@ func (p *peer) doPiece(b []byte, info *MetainfoInfo) (err error) {
 			return err
 		}
 		if isValid {
-			err = gBitField.SetAndSave(int(index), info.infofilename())
+			gBitField.SetBit(int(index), 1)
+			err = gBitField.ToFile(info.infofilename())
 			if err != nil {
 				return err
 			}
@@ -298,10 +299,10 @@ func (p *peer) sendTypeMessageWhile(t uint32, msg []byte) error {
 }
 
 func (p *peer) doBitfield(b []byte) error {
-	if len(b) != len(gBitField) {
+	if len(b) != (gBitField.Len()) {
 		return errors.New("bitfield length mismatch")
 	}
-	p.Bitfield = b
+	p.Bitfield.SetBitData(b)
 	return nil
 }
 func (p *peer) doHave(b []byte) error {
@@ -361,11 +362,9 @@ func randIndex(info *MetainfoInfo) int {
 	start := rand.Intn(cnt)
 	for i := 0; i < cnt; i++ {
 		ii := (start + i) % cnt
-		gBitFieldMutex.RLock()
 		if gBitField.Bit(ii) == 0 {
 			return ii
 		}
-		gBitFieldMutex.RUnlock()
 	}
 	return -1
 }
@@ -430,11 +429,11 @@ func buildpeerMessageBitfield(info *MetainfoInfo) (*bytes.Buffer, error) {
 	if err != nil {
 		return nil, err
 	}
-	n, err := buf.Write(b)
+	n, err := buf.Write(b.BitData())
 	if err != nil {
 		return nil, err
 	}
-	if n != len(b) {
+	if n != b.Len() {
 		log.Fatal("write not enough bytes")
 	}
 	return buf, nil

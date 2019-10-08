@@ -44,9 +44,9 @@ func NewTrackerRequest(mi *Metainfo) *TrackerRequest {
 		Port:       availablePort(),
 		Uploaded:   0,
 		Downloaded: 0,
-		Left:       left(mi.Info),
+		Left:       gBitField.left() * uint64(mi.Info.PieceLength),
 		// Key        uint32
-		NumWant: -1,
+		// NumWant: -1,
 	}
 	return &r
 }

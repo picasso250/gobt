@@ -104,7 +104,7 @@ func writeToFilesDo(files []File, offset int64, piece []byte) error {
 	return nil
 }
 
-func ensureFile(info *MetainfoInfo) (bitfield, error) {
+func ensureFile(info *MetainfoInfo) (*bitfield, error) {
 	if err := os.Chdir(downloadRoot); err != nil {
 		return nil, err
 	}
@@ -118,7 +118,7 @@ func ensureFile(info *MetainfoInfo) (bitfield, error) {
 func pathBuild(path ...string) string {
 	return strings.Join(path, string([]rune([]rune{os.PathSeparator})))
 }
-func ensureFiles(info *MetainfoInfo) (bf bitfield, err error) {
+func ensureFiles(info *MetainfoInfo) (bf *bitfield, err error) {
 	filename := info.filename()
 	if _, err := os.Stat(filename); os.IsNotExist(err) {
 		err := os.Mkdir(filename, 0664)
@@ -142,7 +142,7 @@ func ensureFiles(info *MetainfoInfo) (bf bitfield, err error) {
 
 	return ensureInfoFile(info.infofilename(), info.piecesCount())
 }
-func ensureInfoFile(infoFilename string, piecesCount int) (bf bitfield, err error) {
+func ensureInfoFile(infoFilename string, piecesCount int) (bf *bitfield, err error) {
 	if _, err := os.Stat(infoFilename); os.IsNotExist(err) {
 		bf = allZeroBitField(piecesCount)
 		err := bf.ToFile(infoFilename)
@@ -150,7 +150,7 @@ func ensureInfoFile(infoFilename string, piecesCount int) (bf bitfield, err erro
 			return nil, err
 		}
 	} else {
-		return ioutil.ReadFile(infoFilename)
+		return bitfieldFromFile(infoFilename)
 	}
 	return
 }
@@ -181,7 +181,7 @@ func ensureFileOneByPathList(rootDir string, pathList []string) error {
 	}
 	return nil
 }
-func ensureOneFile(info *MetainfoInfo) (bf bitfield, err error) {
+func ensureOneFile(info *MetainfoInfo) (bf *bitfield, err error) {
 	filename := info.filename()
 	if _, err := os.Stat(filename); os.IsNotExist(err) {
 		b := make([]byte, 0)

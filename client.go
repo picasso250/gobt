@@ -298,8 +298,7 @@ var byteTable = map[byte]int{
 }
 
 var myPeerID peerID
-var gBitField bitfield
-var gBitFieldMutex sync.RWMutex
+var gBitField *bitfield
 var peersMap map[uint64]*peer
 var peersMapMutex sync.RWMutex
 
@@ -568,19 +567,6 @@ func announceRequest(conn *net.UDPConn, transactionID uint32, connectionID uint6
 		log.Fatal("only n", n)
 	}
 	return nil
-}
-
-func left(info *MetainfoInfo) uint64 {
-	b, err := bitfieldFromFile(info.infofilename())
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	sum := uint64(0)
-	for _, ch := range b {
-		sum += uint64(byteTable[ch])
-	}
-	return sum
 }
 
 func availablePort() uint16 {
