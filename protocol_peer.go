@@ -38,10 +38,10 @@ type peer struct {
 	PeerChoking    uint32 // 远程peer正choke本客户端。
 	PeerInterested uint32 // 远程peer对本客户端感兴趣。
 
-	Conn        net.Conn
-	pieceOffset int32
-	Bitfield    bitfield
-	WillCancel  chan int
+	Conn           net.Conn
+	Bitfield       bitfield
+	WillCancel     chan int
+	PieceOffsetMap map[uint32]int // piece start 0----piece offset----piece end
 }
 
 func newPeer(ip uint32, port uint16, pid peerID, bitfieldSize int) *peer {
@@ -130,6 +130,13 @@ func (p *peer) peerMessages(info *MetainfoInfo) error {
 }
 func (p *peer) loop(info *MetainfoInfo) (err error) {
 	for {
+		if p.PeerChoking == 0 {
+			// send him message for request
+		}
+		if p.AmInterested == 0 {
+			time.Sleep(time.Second)
+			continue
+		}
 		t, b, err := readNextMsg(p.Conn)
 		if err != nil {
 			return err
@@ -181,7 +188,37 @@ func (p *peer) doPiece(b []byte, info *MetainfoInfo) (err error) {
 
 	piece := buf.Bytes()
 
-	return writeToFile(info, int(index), int64(begin), piece)
+	if gBitField.Bit(int(index)) == 1 {
+		fmt.Printf("duplicate piece\n")
+		return nil
+	}
+
+	err = writeToFile(info, int(index), int64(begin), piece)
+	if err != nil {
+		return err
+	}
+
+	p.PieceOffsetMap[index] = int(begin + uint32(len(piece)))
+	if int(begin)+len(piece) == info.PieceLength {
+		// 校验
+		var h hash
+		n := copy(h[:], info.Pieces[index*hashSize:(index+1)*hashSize])
+		if n != hashSize {
+			log.Fatal("copy hash size error")
+		}
+		isValid, err := checkHash(info, int(index), h)
+		if err != nil {
+			return err
+		}
+		if isValid {
+			gBitField.SetBit(int(index), 1)
+			err = gBitField.ToFile(info.infofilename())
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func (p *peer) doCancel() {
@@ -305,6 +342,8 @@ func sendCmd(conn net.Conn, t uint32) error {
 	}
 	return writeInteger(conn, t)
 }
+
+//TODO send
 func alternatingStream(conn net.Conn, info *MetainfoInfo) error {
 	// randomly pick a pieace to download
 	index := randIndex(info)
