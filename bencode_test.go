@@ -61,6 +61,17 @@ func TestEncode(t *testing.T) {
 		t.Errorf("dictionary encode fail")
 	}
 }
+func TestEncodeBytes(t *testing.T) {
+	str := []byte("spam")
+	b, err := Encode(str)
+	if err != nil {
+		t.Errorf("spam encode error")
+	}
+	if string(b) != "4:spam" {
+		t.Errorf("spam encode fail")
+	}
+}
+
 func TestParse(t *testing.T) {
 	var v interface{}
 	var err error
@@ -69,7 +80,7 @@ func TestParse(t *testing.T) {
 	if err != nil {
 		t.Errorf("string test error")
 	}
-	if v != "test" {
+	if string(v.([]byte)) != "test" {
 		t.Errorf("string test fail")
 	}
 
@@ -98,12 +109,12 @@ func TestParse(t *testing.T) {
 	}
 
 	var rl []interface{}
-	rl = []interface{}{"test", "abcde"}
+	rl = []interface{}{[]byte("test"), []byte("abcde")}
 	v, err = Parse([]byte("l4:test5:abcdee"))
 	if err != nil {
 		t.Errorf("list error")
 	}
-	if !Equal(v.([]interface{}), rl) {
+	if !reflect.DeepEqual(v.([]interface{}), rl) {
 		t.Errorf("list fail")
 	}
 
@@ -117,7 +128,10 @@ func TestParse(t *testing.T) {
 		t.Errorf("dictionary age fail")
 	}
 
-	rd = map[string]interface{}{"path": "C:\\", "filename": "test.txt"}
+	rd = map[string]interface{}{
+		"path":     []byte("C:\\"),
+		"filename": []byte("test.txt"),
+	}
 	v, err = Parse([]byte("d4:path3:C:\\8:filename8:test.txte"))
 	if err != nil {
 		t.Errorf("dictionary path error")

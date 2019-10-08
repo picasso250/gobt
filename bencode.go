@@ -71,9 +71,14 @@ func Encode(v interface{}) ([]byte, error) {
 			return encodeMap(val)
 		}
 	case string:
-		len := len(v)
-		lenStr := strconv.Itoa(len)
+		length := len(v)
+		lenStr := strconv.Itoa(length)
 		return []byte(lenStr + ":" + v), nil
+	case []byte:
+		length := len(v)
+		lenStr := strconv.Itoa(length)
+		b := bytes.Join([][]byte{[]byte(lenStr), v}, []byte{':'})
+		return b, nil
 	case int:
 		str := strconv.Itoa(v)
 		return []byte("i" + str + "e"), nil
@@ -210,7 +215,7 @@ func parseValue(b []byte) (interface{}, []byte, error) {
 				return m, left[1:], errors.New("key has no value")
 			}
 			v, left, err := parseValue(bt)
-			m[k.(string)] = v
+			m[string(k.([]byte))] = v
 			bt = left
 			if len(left) >= 1 && left[0] == 'e' {
 				return m, left[1:], nil
@@ -220,20 +225,20 @@ func parseValue(b []byte) (interface{}, []byte, error) {
 	return nil, nil, errors.New("not any type")
 }
 
-func parseString(b []byte) (string, []byte, error) {
+func parseString(b []byte) ([]byte, []byte, error) {
 	i := bytes.IndexByte(b, ':')
 	if i == -1 {
-		return "", nil, errors.New("no : in string")
+		return nil, nil, errors.New("no : in string")
 	}
 	if i == 0 {
-		return "", nil, errors.New("length cannot be found in string")
+		return nil, nil, errors.New("length cannot be found in string")
 	}
 	len, err := strconv.Atoi(string(b[:i]))
 	if err != nil {
-		return "", nil, err
+		return nil, nil, err
 	}
 	b = b[i+1:]
-	return string(b[:len]), b[len:], nil
+	return (b[:len]), b[len:], nil
 }
 func parseInt(b []byte) (int64, []byte, error) {
 	if b[0] != 'i' {
