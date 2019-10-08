@@ -115,14 +115,11 @@ func (p *peer) startListen(metainfo *Metainfo) {
 func (p *peer) peerMessages(info *MetainfoInfo) error {
 	conn := p.Conn
 
-	msg, err := buildpeerMessageBitfield(info)
+	msg, err := buildPeerMessageBitfield(info)
 	if err != nil {
 		return err
 	}
-	err = sendMessage(conn, msg)
-	if err != nil {
-		return err
-	}
+	p.ToSend <- messageToSend{nil, msg}
 
 	// for simplicity we are interested in every one and do not choke anyone
 	err = sendCmd(conn, typeUnchoke)
@@ -180,11 +177,7 @@ func inCancel(elem iblPack, list []iblPack) (bool, []iblPack) {
 }
 
 func packCancel(index int32, begin int32, length int32) []byte {
-	b, err := packMessage(nil, index, begin, length)
-	if err != nil {
-		log.Fatal(err)
-	}
-	return b
+	return packMessage(nil, index, begin, length)
 }
 func msgWrap(msg []byte) []byte {
 	buf := new(bytes.Buffer)
@@ -332,12 +325,11 @@ func (p *peer) doRequest(b []byte, info *MetainfoInfo, errOccur chan error) erro
 			return err
 		}
 		// 'piece' messages contain an index, begin, and piece
-		b, err := packMessage(piece, int32(typePiece), int32(begin), int32(length))
-		if err != nil {
-			return err
-		}
+		b := packMessage(piece, int32(typePiece), int32(begin), int32(length))
+
 		p.ToSend <- messageToSend{cancelFlag, b}
 
+		//todo delete this
 		go func() {
 			err = p.sendTypeMessageWhile(typePiece, (b))
 			if err != nil {
@@ -439,6 +431,7 @@ func readNextMsg(conn net.Conn) (uint32, []byte, error) {
 	return t, b, nil
 }
 func sendCmd(conn net.Conn, t uint32) error {
+	packMessage(nil, int32(t))
 	err := writeInteger(conn, uint32(4))
 	if err != nil {
 		return err
@@ -503,17 +496,17 @@ func sendMessage(conn net.Conn, msg *bytes.Buffer) error {
 }
 
 // pack ints and bytes
-func packMessage(b []byte, is ...int32) ([]byte, error) {
+func packMessage(b []byte, is ...int32) []byte {
 	buf := bytes.NewBuffer(b)
 	err := writeIntegers(buf, is)
 	if err != nil {
-		return nil, err
+		log.Fatal(err)
 	}
 	err = writeAll(buf, b)
 	if err != nil {
-		return nil, err
+		log.Fatal(err)
 	}
-	return buf.Bytes(), nil
+	return buf.Bytes()
 }
 
 func sendTypeMessage(conn net.Conn, t uint32, msg *bytes.Buffer) error {
@@ -530,7 +523,7 @@ func sendTypeMessage(conn net.Conn, t uint32, msg *bytes.Buffer) error {
 	}
 	return nil
 }
-func buildpeerMessageBitfield(info *MetainfoInfo) (*bytes.Buffer, error) {
+func buildPeerMessageBitfield(info *MetainfoInfo) ([]byte, error) {
 	buf := new(bytes.Buffer)
 	err := writeInteger(buf, uint32(typeBitfield))
 	if err != nil {
@@ -547,7 +540,7 @@ func buildpeerMessageBitfield(info *MetainfoInfo) (*bytes.Buffer, error) {
 	if n != b.Len() {
 		log.Fatal("write not enough bytes")
 	}
-	return buf, nil
+	return buf.Bytes(), nil
 }
 
 func handshake(p *peer, metainfo *Metainfo) error {
