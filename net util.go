@@ -3,9 +3,11 @@ package gobt
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"io"
 	"log"
 	"net"
+	"strconv"
 )
 
 func writeInteger(w io.Writer, i interface{}) error {
@@ -38,4 +40,15 @@ func read2Byte(conn *net.UDPConn) (uint16, error) {
 		log.Fatal(err)
 	}
 	return i, nil
+}
+func availablePort() (net.Listener, uint16, error) {
+	for port := 6881; port <= 6889; port++ {
+		ln, err := net.Listen("tcp", ":"+strconv.Itoa(port))
+		if err != nil {
+			return nil, 0, err
+		}
+		return ln, uint16(port), nil
+
+	}
+	return nil, 0, errors.New("no port available")
 }

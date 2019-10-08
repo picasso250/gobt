@@ -297,8 +297,15 @@ var byteTable = map[byte]int{
 	255: 6,
 }
 
+const (
+	statePeerInit = iota
+	statePeerConnected
+	statePeerError
+)
+
 var myPeerID peerID
 var gBitField *bitfield
+var peersStateMap map[uint64]int
 var peersMap map[uint64]*peer
 var peersMapMutex sync.RWMutex
 
@@ -334,26 +341,40 @@ func Download(filename string) {
 	gBitField, err = ensureFile(metaInfo.Info)
 	if err != nil {
 		fmt.Printf("file error: %s\n", err)
+		log.Fatal(err)
 	}
 
-	trackerProtocol(metaInfo)
+	ln, port, err := availablePort()
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer ln.Close()
 
-	go doPeers(metaInfo)
+	trackerProtocol(metaInfo, port)
 
-}
-func doPeers(mi *Metainfo) {
-	// if peer not start, start it
-	// todo receive
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				// handle error
+			}
+			go handleConnection(conn)
+		}
+	}()
+
+	// do peers
 	for {
 		peersMapMutex.RLock()
 		for _, peer := range peersMap {
 			if peer.Conn == nil {
-				go peer.start(mi)
+				go peer.startListen(metaInfo)
+				go peer.startSend(metaInfo)
 			}
 		}
 		peersMapMutex.RUnlock()
 		time.Sleep(time.Second)
 	}
+
 }
 
 func uniquePeers(peers []ipPort) []ipPort {
@@ -483,7 +504,7 @@ func udpTracker(address string, metainfo *Metainfo) error {
 	}
 
 	// IPv4 announce request
-	req := NewTrackerRequest(metainfo)
+	req := NewTrackerRequest(metainfo, 88) // TODO what port?
 	announceRequest(conn, transactionID, connectionID, req)
 
 	// IPv4 announce response
@@ -568,18 +589,6 @@ func announceRequest(conn *net.UDPConn, transactionID uint32, connectionID uint6
 	return nil
 }
 
-func availablePort() uint16 {
-	for port := 6881; port <= 6889; port++ {
-		ln, err := net.Listen("tcp", ":"+strconv.Itoa(port))
-		if ln != nil {
-			defer ln.Close()
-		}
-		if err == nil {
-			return uint16(port)
-		}
-	}
-	return 0
-}
 func announceRequestBytes(conn *net.UDPConn, transactionID uint32, connectionID uint64, req *TrackerRequest) ([]byte, error) {
 	action := uint32(1) // announce
 	var err error
