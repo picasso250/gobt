@@ -210,19 +210,15 @@ func (p *peer) doRequest(b []byte, info *MetainfoInfo) error {
 			return err
 		}
 
-		err = p.sendTypeMessageWhile(typePiece, (b))
-		if err != nil {
-			return err
-		}
+		go func() {
+			err = p.sendTypeMessageWhile(typePiece, (b))
+			if err != nil {
+				fmt.Printf("sending error %s\n", err)
+			}
+		}()
 
 	}
 
-	//todo move to piece
-	piece := buf.Bytes()
-	err = writeToFile(info, int(index), int64(begin), piece)
-	if err != nil {
-		return err
-	}
 	return nil
 }
 
@@ -258,6 +254,7 @@ func (p *peer) sendTypeMessageWhile(t uint32, msg []byte) error {
 
 	return nil
 }
+
 func (p *peer) doBitfield(b []byte) error {
 	if len(b) != len(gBitField) {
 		return errors.New("bitfield length mismatch")
