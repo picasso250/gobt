@@ -18,7 +18,7 @@ type File struct {
 }
 
 func (f *File) longPath() string {
-	return pathBuild(f.Path...)
+	return buildPath(f.Path...)
 }
 
 // NewFileFromMap builds a File
@@ -105,30 +105,22 @@ func writeToFilesDo(files []File, offset int64, piece []byte) error {
 }
 
 func ensureFile(info *MetainfoInfo) (*bitfield, error) {
-	if err := os.Chdir(downloadRoot); err != nil {
-		return nil, err
-	}
-
 	if len(info.Files) != 0 {
 		return ensureFiles(info)
 	}
 	return ensureOneFile(info)
 }
 
-func pathBuild(path ...string) string {
+func buildPath(path ...string) string {
 	return strings.Join(path, string([]rune([]rune{os.PathSeparator})))
 }
 func ensureFiles(info *MetainfoInfo) (bf *bitfield, err error) {
-	filename := info.Name
+	filename := info.filename()
 	if _, err := os.Stat(filename); os.IsNotExist(err) {
 		err := os.Mkdir(filename, 0664)
 		if err != nil {
 			return nil, err
 		}
-	}
-
-	if err := os.Chdir(filename); err != nil {
-		return nil, err
 	}
 
 	for _, file := range info.Files {

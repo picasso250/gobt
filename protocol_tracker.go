@@ -89,9 +89,9 @@ func keepAliveWithTracker(u *url.URL, metainfo *Metainfo, port uint16) {
 	var body []byte
 	if doNotBotherTracker { // for debug
 		debugRoot := ".debug"
-		cacheFile := pathBuild(debugRoot, (u.Hostname()))
+		cacheFile := buildPath(debugRoot, (u.Hostname()))
 		if _, err := os.Stat(cacheFile); err != nil {
-			errFile := pathBuild(debugRoot, (u.Hostname())+".error")
+			errFile := buildPath(debugRoot, (u.Hostname())+".error")
 			if _, err := os.Stat(errFile); err == nil {
 				errBytes, err := ioutil.ReadFile(errFile)
 				if err != nil {
