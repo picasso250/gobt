@@ -8,7 +8,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"math/rand"
 	"net"
@@ -332,7 +331,7 @@ func (i ipPort) String() string {
 // Download download BT file
 func Download(filename string) {
 
-	metaInfo, err := parseBTFile(filename)
+	metaInfo, err := newMetainfoFromFile(filename)
 	if err != nil {
 		fmt.Printf("parse bt file error: %s\n", err)
 		return
@@ -445,17 +444,6 @@ func unique(intSlice []string) []string {
 		}
 	}
 	return list
-}
-func parseBTFile(filename string) (*Metainfo, error) {
-	dat, err := ioutil.ReadFile(filename)
-	if err != nil {
-		return nil, err
-	}
-	vv, err := Parse(dat)
-	if err != nil {
-		return nil, err
-	}
-	return NewMetainfoFromMap(vv.(map[string]interface{})), nil
 }
 
 func udpTracker(address string, metainfo *Metainfo) error {

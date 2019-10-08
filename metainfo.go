@@ -1,6 +1,9 @@
 package gobt
 
-import "errors"
+import (
+	"errors"
+	"io/ioutil"
+)
 
 // Metainfo Metainfo files (also known as .torrent files)
 type Metainfo struct {
@@ -26,6 +29,17 @@ func NewMetainfoFromMap(m map[string]interface{}) *Metainfo {
 		}
 	}
 	return &mi
+}
+func newMetainfoFromFile(filename string) (*Metainfo, error) {
+	dat, err := ioutil.ReadFile(filename)
+	if err != nil {
+		return nil, err
+	}
+	vv, err := Parse(dat)
+	if err != nil {
+		return nil, err
+	}
+	return NewMetainfoFromMap(vv.(map[string]interface{})), nil
 }
 func flat(a []interface{}) []interface{} {
 	ret := make([]interface{}, 0, len(a))
@@ -68,18 +82,18 @@ func NewMetainfoInfoFromMap(m map[string]interface{}) *MetainfoInfo {
 
 	return &mi
 }
+
 func (info *MetainfoInfo) piecesCount() int {
 	return len([]byte(info.Pieces)) / hashSize
 }
 func (info *MetainfoInfo) filename() string {
 	return buildPath(downloadRoot, info.Name)
 }
-func (info *MetainfoInfo) infofilename() string {
-	// return pathBuild(downloadRoot, info.Name+".btinfo")
-	return info.Name + ".btinfo"
+func (info *MetainfoInfo) infoFilename() string {
+	return info.filename() + ".btinfo"
 }
 func (info *MetainfoInfo) bitfield() (*bitfield, error) {
-	return bitfieldFromFile(info.infofilename())
+	return bitfieldFromFile(info.infoFilename())
 }
 
 type peerID [peerIDSize]byte
