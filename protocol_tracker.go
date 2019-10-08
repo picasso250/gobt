@@ -178,8 +178,8 @@ func keepAliveWithTracker(u *url.URL, metainfo *Metainfo, port uint16) {
 	if len(pl) != 0 {
 		peersMapMutex.Lock()
 		for _, pp := range pl {
-			if peersMap[pp.Uint64()] == nil {
-				peersMap[pp.Uint64()] = pp
+			if peersMap[pp.String()] == nil {
+				peersMap[pp.String()] = pp
 			}
 		}
 		peersMapMutex.Unlock()

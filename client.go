@@ -13,7 +13,6 @@ import (
 	"math/rand"
 	"net"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 )
@@ -305,8 +304,8 @@ const (
 
 var myPeerID peerID
 var gBitField *bitfield
-var peersStateMap map[uint64]int
-var peersMap map[uint64]*peer
+var peersStateMap map[string]int
+var peersMap map[string]*peer
 var peersMapMutex sync.RWMutex
 
 type ipPort struct {
@@ -356,7 +355,7 @@ func Download(filename string) {
 		for {
 			conn, err := ln.Accept()
 			if err != nil {
-				// handle error
+				log.Fatal(err)
 			}
 			go handleConnection(conn)
 		}
@@ -376,19 +375,10 @@ func Download(filename string) {
 	}
 
 }
-
-func uniquePeers(peers []ipPort) []ipPort {
-	keys := make(map[uint64]bool)
-	list := []ipPort{}
-	for _, entry := range peers {
-		e := uint64(entry.Port)<<32 + uint64(entry.IP)
-		if _, value := keys[e]; !value {
-			keys[e] = true
-			list = append(list, entry)
-		}
-	}
-	return list
+func handleConnection(conn net.Conn) {
+	addr := conn.RemoteAddr()
 }
+
 func compactPeerList(b []byte, piecesCount int) ([]*peer, error) {
 	ret := make([]*peer, 0)
 	if len(b)%6 != 0 {
@@ -397,8 +387,16 @@ func compactPeerList(b []byte, piecesCount int) ([]*peer, error) {
 	for i := 0; i < len(b)/6; i++ {
 		ip := int(b[i*6])*0xFFFFFF + int(b[i*6+1])*0xFFFF + int(b[i*6+2])*0xFF + int(b[i*6+3])
 		port := int(b[i*6+4])*0xFF + int(b[i*6+5])
+
+		address := IPIntToString(ip) + ":" + strconv.Itoa(port)
+		addr, err := net.ResolveTCPAddr("tcp", address)
+		if err != nil {
+			fmt.Printf("peer address resolve error: %s\n", err)
+			continue
+		}
+
 		var pid peerID
-		i := newPeer(uint32(ip), uint16(port), pid, piecesCount)
+		i := newPeer(addr, pid, piecesCount)
 		ret = append(ret, i)
 	}
 	return ret, nil
@@ -408,53 +406,24 @@ func peerList(peers map[string]interface{}, piecesCount int) ([]*peer, error) {
 	ret := make([]*peer, 0)
 	for _, p := range peers {
 		pm := p.(map[string]interface{})
-		port, err := strconv.Atoi(string(pm["port"].([]byte)))
-		if err != nil {
-			return ret, err
-		}
-		ip := StringIPToInt(string(pm["ip"].([]byte)))
+
 		pid, err := peerIDFromBytes(pm["peer id"].([]byte))
 		if err != nil {
 			return ret, err
 		}
-		pp := newPeer(ip, uint16(port), pid, piecesCount)
+
+		address := string(pm["ip"].([]byte)) + ":" + string(pm["port"].([]byte))
+		addr, err := net.ResolveTCPAddr("tcp", address)
+		if err != nil {
+			fmt.Printf("peer address resolve error: %s\n", err)
+			continue
+		}
+		pp := newPeer(addr, pid, piecesCount)
 		ret = append(ret, pp)
 	}
 	return ret, nil
 }
 
-// StringIPToInt string IP to int
-func StringIPToInt(ipstring string) uint32 {
-	ipSegs := strings.Split(ipstring, ".")
-	var ipInt uint32 = 0
-	var pos uint = 24
-	for _, ipSeg := range ipSegs {
-		tempInt, _ := strconv.Atoi(ipSeg)
-		tempInt = tempInt << pos
-		ipInt = ipInt | uint32(tempInt)
-		pos -= 8
-	}
-	return ipInt
-}
-
-// IPIntToString IP int to string
-func IPIntToString(ipInt int) string {
-	ipSegs := make([]string, 4)
-	var len int = len(ipSegs)
-	buffer := bytes.NewBufferString("")
-	for i := 0; i < len; i++ {
-		tempInt := ipInt & 0xFF
-		ipSegs[len-i-1] = strconv.Itoa(tempInt)
-		ipInt = ipInt >> 8
-	}
-	for i := 0; i < len; i++ {
-		buffer.WriteString(ipSegs[i])
-		if i < len-1 {
-			buffer.WriteString(".")
-		}
-	}
-	return buffer.String()
-}
 func getAllAnnounce(metainfo *Metainfo) (ret []string) {
 	return unique(append(metainfo.AnnounceList, metainfo.Announce))
 }

@@ -9,7 +9,6 @@ import (
 	"log"
 	"math/rand"
 	"net"
-	"strconv"
 	"time"
 )
 
@@ -30,8 +29,7 @@ const (
 )
 
 type peer struct {
-	IP     uint32
-	Port   uint16
+	Addr   net.Addr
 	PeerID peerID
 	// state
 	AmChoking      uint32 // 本客户端正在choke远程peer。
@@ -54,10 +52,9 @@ type messageToSend struct {
 
 type iblPack []byte // pack index, begin, and length to bytes
 
-func newPeer(ip uint32, port uint16, pid peerID, bitfieldSize int) *peer {
+func newPeer(addr net.Addr, pid peerID, bitfieldSize int) *peer {
 	return &peer{
-		IP:     ip, // TODO use net.IP
-		Port:   port,
+		Addr:   addr,
 		PeerID: pid,
 		// 客户端连接开始时状态是choke和not interested(不感兴趣)。换句话就是：
 		AmChoking:      1,
@@ -71,12 +68,9 @@ func newPeer(ip uint32, port uint16, pid peerID, bitfieldSize int) *peer {
 		ToSend:   make(chan messageToSend, 10),
 	}
 }
-func (p *peer) Uint64() uint64 {
-	return uint64(p.IP)<<32 | uint64(p.Port)
-}
 
 func (p *peer) String() string {
-	return IPIntToString(int(p.IP)) + ":" + strconv.Itoa(int(p.Port))
+	return p.Addr.String()
 }
 
 func (p *peer) startListen(metainfo *Metainfo) {
@@ -84,10 +78,11 @@ func (p *peer) startListen(metainfo *Metainfo) {
 
 	// maybe we don't need to lock here, but who knows
 	peersMapMutex.Lock()
-	p.Conn, err = net.Dial("tcp4", p.String())
+	// todo tcp v6
+	p.Conn, err = net.Dial("tcp4", p.Addr.String())
 	peersMapMutex.Unlock()
 	if err != nil {
-		fmt.Printf("dial tcp %s error: %s\n", p.String(), err)
+		fmt.Printf("dial tcp %s error: %s\n", p.Addr.String(), err)
 		return
 	}
 	defer p.Conn.Close()
