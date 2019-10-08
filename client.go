@@ -377,6 +377,16 @@ func Download(filename string) {
 }
 func handleConnection(conn net.Conn) {
 	addr := conn.RemoteAddr()
+	peersMapMutex.RLock()
+	defer peersMapMutex.RUnlock()
+	if peersMap[addr.String()]== nil{
+		var pid peerID
+		newPeer(addr,pid)
+		go handleConnectionDo(conn)
+	}
+}
+func handleConnectionDo(conn net.Conn) {
+
 }
 
 func compactPeerList(b []byte, piecesCount int) ([]*peer, error) {
@@ -396,7 +406,7 @@ func compactPeerList(b []byte, piecesCount int) ([]*peer, error) {
 		}
 
 		var pid peerID
-		i := newPeer(addr, pid, piecesCount)
+		i := newPeer(addr, pid)
 		ret = append(ret, i)
 	}
 	return ret, nil
@@ -418,7 +428,7 @@ func peerList(peers map[string]interface{}, piecesCount int) ([]*peer, error) {
 			fmt.Printf("peer address resolve error: %s\n", err)
 			continue
 		}
-		pp := newPeer(addr, pid, piecesCount)
+		pp := newPeer(addr, pid)
 		ret = append(ret, pp)
 	}
 	return ret, nil

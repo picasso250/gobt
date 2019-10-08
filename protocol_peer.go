@@ -52,7 +52,7 @@ type messageToSend struct {
 
 type iblPack []byte // pack index, begin, and length to bytes
 
-func newPeer(addr net.Addr, pid peerID, bitfieldSize int) *peer {
+func newPeer(addr net.Addr, pid peerID) *peer {
 	return &peer{
 		Addr:   addr,
 		PeerID: pid,
@@ -63,7 +63,7 @@ func newPeer(addr net.Addr, pid peerID, bitfieldSize int) *peer {
 		PeerInterested: 0,
 
 		Conn:     nil, // Multiple goroutines may invoke methods on a Conn simultaneously
-		Bitfield: allZeroBitField(bitfieldSize),
+		Bitfield: allZeroBitField(gBitField.Len()),
 		Cancel:   make(chan iblPack, 10),
 		ToSend:   make(chan messageToSend, 10),
 	}

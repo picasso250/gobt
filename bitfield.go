@@ -46,14 +46,22 @@ func (b bitfield) SetBit(i int, v byte) {
 	v <<= (7 - ii)
 	b.bitData[bi] |= v
 }
-func allZeroBitField(size int) *bitfield {
-	bitmapSize := size / 8
-	if size%8 != 0 {
+
+// size: count of pieces
+func allZeroBitField(bitCount int) *bitfield {
+	bitmapSize := bitCount / 8
+	if bitCount%8 != 0 {
 		bitmapSize++
 	}
 	return &bitfield{
 		new(sync.RWMutex),
 		make([]byte, bitmapSize),
+	}
+}
+func allZeroBitFieldByte(byteCount int) *bitfield {
+	return &bitfield{
+		new(sync.RWMutex),
+		make([]byte, byteCount),
 	}
 }
 func bitfieldFromFile(filename string) (*bitfield, error) {
