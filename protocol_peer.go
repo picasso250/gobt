@@ -41,11 +41,12 @@ type peer struct {
 	Conn        net.Conn
 	pieceOffset int32
 	Bitfield    bitfield
+	WillCancel  chan int
 }
 
 func newPeer(ip uint32, port uint16, pid peerID, bitfieldSize int) *peer {
 	return &peer{
-		IP:     ip,
+		IP:     ip, // TODO use net.IP
 		Port:   port,
 		PeerID: pid,
 		// 客户端连接开始时状态是choke和not interested(不感兴趣)。换句话就是：
@@ -54,8 +55,9 @@ func newPeer(ip uint32, port uint16, pid peerID, bitfieldSize int) *peer {
 		PeerChoking:    1,
 		PeerInterested: 0,
 
-		Conn:     nil,
-		Bitfield: allZeroBitField(bitfieldSize),
+		Conn:       nil, // Multiple goroutines may invoke methods on a Conn simultaneously
+		Bitfield:   allZeroBitField(bitfieldSize),
+		WillCancel: make(chan int),
 	}
 }
 func (p *peer) Uint64() uint64 {
@@ -126,7 +128,7 @@ func (p *peer) peerMessages(info *MetainfoInfo) error {
 
 	return p.loop(info)
 }
-func (p *peer) loop(info *MetainfoInfo) error {
+func (p *peer) loop(info *MetainfoInfo) (err error) {
 	for {
 		t, b, err := readNextMsg(p.Conn)
 		if err != nil {
@@ -150,16 +152,15 @@ func (p *peer) loop(info *MetainfoInfo) error {
 			}
 		case typeBitfield:
 			err = p.doBitfield(b)
-			if err != nil {
-				return err
-			}
 		case typeRequest:
 			err = p.doRequest(b, info)
-			if err != nil {
-				return err
-			}
+		case typeCancel:
+			p.doCancel()
 		}
 	}
+}
+func (p *peer) doCancel() {
+	p.WillCancel <- 1
 }
 func (p *peer) doRequest(b []byte, info *MetainfoInfo) error {
 	buf := bytes.NewBuffer(b)
@@ -179,7 +180,7 @@ func (p *peer) doRequest(b []byte, info *MetainfoInfo) error {
 	// if we have
 	if gBitField.Bit(int(index)) == 1 {
 
-		b, err := readSome(info, int(index), int64(begin), int64(length))
+		b, err := readSomeFileContent(info, int(index), int64(begin), int64(length))
 		if err != nil {
 			return err
 		}

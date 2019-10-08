@@ -212,7 +212,7 @@ func checkHash(info *MetainfoInfo, index int, ih hash) (flag bool, err error) {
 	} else {
 		// multi file mode
 		// seek to start
-		b, err = readSome(info, index, 0, int64(info.PieceLength))
+		b, err = readSomeFileContent(info, index, 0, int64(info.PieceLength))
 		if err != nil {
 			return false, err
 		}
@@ -220,7 +220,7 @@ func checkHash(info *MetainfoInfo, index int, ih hash) (flag bool, err error) {
 	s := sha1.Sum(b)
 	return bytes.Compare(s[:], ih[:]) == 0, nil
 }
-func readSome(info *MetainfoInfo, index int, offset int64, length int64) ([]byte, error) {
+func readSomeFileContent(info *MetainfoInfo, index int, offset int64, length int64) ([]byte, error) {
 	fileIndex, offset, err := seekStart(info.Files, int64(index)*int64(info.PieceLength)+offset)
 	if err != nil {
 		return nil, err
