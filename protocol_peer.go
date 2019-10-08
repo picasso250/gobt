@@ -65,7 +65,7 @@ func newPeer(addr net.Addr, pid peerID) *peer {
 		Conn:     nil, // Multiple goroutines may invoke methods on a Conn simultaneously
 		Bitfield: allZeroBitField(gBitField.Len()),
 		Cancel:   make(chan iblPack, 10),
-		ToSend:   make(chan messageToSend, 10),
+		ToSend:   make(chan messageToSend), // for simplicity, make it sync
 	}
 }
 
@@ -117,7 +117,9 @@ func (p *peer) startListen(metainfo *Metainfo) {
 }
 
 func (p *peer) peerMessages(info *MetainfoInfo) error {
-	conn := p.Conn
+
+	// start to send
+	go p.startSend()
 
 	msg, err := buildPeerMessageBitfield(info)
 	if err != nil {
@@ -126,22 +128,16 @@ func (p *peer) peerMessages(info *MetainfoInfo) error {
 	p.ToSend <- messageToSend{nil, msg}
 
 	// for simplicity we are interested in every one and do not choke anyone
-	err = sendCmd(conn, typeUnchoke)
-	if err != nil {
-		return err
-	}
+	p.sendCmd(typeUnchoke)
 	p.AmChoking = 0
 
-	err = sendCmd(conn, typeInterested)
-	if err != nil {
-		return err
-	}
+	p.sendCmd(typeInterested)
 	p.AmInterested = 1
 
 	return p.loop(info)
 }
 
-func (p *peer) startSend(metainfo *Metainfo) {
+func (p *peer) startSend() {
 	// these two are goroutine safe
 	conn := p.Conn
 
@@ -167,6 +163,7 @@ func (p *peer) startSend(metainfo *Metainfo) {
 
 	}
 }
+
 func writeMessage(conn net.Conn, msg []byte) error {
 	b := msgWrap(msg)
 	return writeAll(conn, b)
@@ -434,13 +431,9 @@ func readNextMsg(conn net.Conn) (uint32, []byte, error) {
 	}
 	return t, b, nil
 }
-func sendCmd(conn net.Conn, t uint32) error {
-	packMessage(nil, int32(t))
-	err := writeInteger(conn, uint32(4))
-	if err != nil {
-		return err
-	}
-	return writeInteger(conn, t)
+func (p *peer) sendCmd(t uint32) {
+	msg := packMessage(nil, int32(t))
+	p.ToSend <- messageToSend{nil, msg}
 }
 
 func requestPeer(p *peer, info *MetainfoInfo) error {
