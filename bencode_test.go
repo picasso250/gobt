@@ -26,7 +26,7 @@ func TestEncode(t *testing.T) {
 		t.Errorf("3 encode fail")
 	}
 
-	b, err = Encode(-3)
+	b, err = Encode(int64(-3))
 	if err != nil {
 		t.Errorf("-3 encode error")
 	}
@@ -77,7 +77,7 @@ func TestParse(t *testing.T) {
 	if err != nil {
 		t.Errorf("integer 1234 error")
 	}
-	if v != 1234 {
+	if v.(int64) != 1234 {
 		t.Errorf("integer 1234 fail")
 	}
 
@@ -85,7 +85,7 @@ func TestParse(t *testing.T) {
 	if err != nil {
 		t.Errorf("integer -1234 error")
 	}
-	if v != -1234 {
+	if v.(int64) != -1234 {
 		t.Errorf("integer -1234 fail")
 	}
 
@@ -93,7 +93,7 @@ func TestParse(t *testing.T) {
 	if err != nil {
 		t.Errorf("integer 0 error")
 	}
-	if v != 0 {
+	if v.(int64) != 0 {
 		t.Errorf("integer 0 fail")
 	}
 
@@ -108,7 +108,7 @@ func TestParse(t *testing.T) {
 	}
 
 	var rd map[string]interface{}
-	rd = map[string]interface{}{"age": 20}
+	rd = map[string]interface{}{"age": int64(20)}
 	v, err = Parse([]byte("d3:agei20ee"))
 	if err != nil {
 		t.Errorf("dictionary age error")

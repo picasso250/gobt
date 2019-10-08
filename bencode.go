@@ -77,6 +77,9 @@ func Encode(v interface{}) ([]byte, error) {
 	case int:
 		str := strconv.Itoa(v)
 		return []byte("i" + str + "e"), nil
+	case int64:
+		str := strconv.FormatInt(v, 10)
+		return []byte("i" + str + "e"), nil
 	}
 }
 
