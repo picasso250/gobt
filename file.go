@@ -125,14 +125,13 @@ func ensureFiles(info *MetainfoInfo) (bf *bitfield, err error) {
 
 	for _, file := range info.Files {
 		path := file.Path
-		prefix := string(append([]rune("."), os.PathSeparator))
-		err := ensureFileOneByPathList(prefix, path)
+		err := ensureFileOneByPathList(filename, path)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	return ensureInfoFile(info.Name+".btinfo", info.piecesCount())
+	return ensureInfoFile(info.infoFilename(), info.piecesCount())
 }
 func ensureInfoFile(infoFilename string, piecesCount int) (bf *bitfield, err error) {
 	if _, err := os.Stat(infoFilename); os.IsNotExist(err) {
@@ -147,11 +146,10 @@ func ensureInfoFile(infoFilename string, piecesCount int) (bf *bitfield, err err
 	return
 }
 func ensureFileOneByPathList(rootDir string, pathList []string) error {
-	r := []rune(rootDir)
+	dir := (rootDir)
 	for i, path := range pathList {
 		if i == len(pathList)-1 {
-			r = append(r, []rune(path)...)
-			filename := string(r)
+			filename := buildPath(dir, path)
 			if _, err := os.Stat(filename); os.IsNotExist(err) {
 				b := make([]byte, 0)
 				err := ioutil.WriteFile(filename, b, 0664)
@@ -160,15 +158,13 @@ func ensureFileOneByPathList(rootDir string, pathList []string) error {
 				}
 			}
 		} else {
-			r = append(r, []rune(path)...)
-			dir := string(r)
+			dir := buildPath(dir, path)
 			if _, err := os.Stat(dir); os.IsNotExist(err) {
 				err := os.Mkdir(dir, 0664)
 				if err != nil {
 					return err
 				}
 			}
-			r = append(r, os.PathSeparator)
 		}
 	}
 	return nil
@@ -183,7 +179,7 @@ func ensureOneFile(info *MetainfoInfo) (bf *bitfield, err error) {
 		}
 	}
 
-	return ensureInfoFile(info.infofilename(), info.piecesCount())
+	return ensureInfoFile(info.infoFilename(), info.piecesCount())
 }
 func checkHash(info *MetainfoInfo, index int, ih hash) (flag bool, err error) {
 	b := make([]byte, 0, info.PieceLength)

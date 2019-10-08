@@ -289,7 +289,7 @@ func (p *peer) doPiece(b []byte, info *MetainfoInfo) (err error) {
 		}
 		if isValid {
 			gBitField.SetBit(int(index), 1)
-			err = gBitField.ToFile(info.infofilename())
+			err = gBitField.ToFile(info.infoFilename())
 			if err != nil {
 				return err
 			}
