@@ -68,7 +68,6 @@ var trackerMapMutex sync.RWMutex
 
 func trackerProtocol(metainfo *Metainfo) {
 	allAnnounce := getAllAnnounce(metainfo)
-	chPeers := make(chan []ipPort, 1)
 	for _, announce := range allAnnounce {
 		u, err := url.Parse(announce)
 		if err != nil {
@@ -81,10 +80,10 @@ func trackerProtocol(metainfo *Metainfo) {
 			continue
 		}
 
-		go keepAliveWithTracker(u, metainfo, chPeers)
+		go keepAliveWithTracker(u, metainfo)
 	}
 }
-func keepAliveWithTracker(u *url.URL, metainfo *Metainfo, chPeers chan []ipPort) {
+func keepAliveWithTracker(u *url.URL, metainfo *Metainfo) {
 	q := NewTrackerRequest(metainfo).Query()
 	u.RawQuery = q.Encode()
 	var body []byte
@@ -175,6 +174,7 @@ func keepAliveWithTracker(u *url.URL, metainfo *Metainfo, chPeers chan []ipPort)
 		}
 	}
 
+	// todo limit the number of peers
 	if len(pl) != 0 {
 		peersMapMutex.Lock()
 		for _, pp := range pl {
@@ -185,6 +185,6 @@ func keepAliveWithTracker(u *url.URL, metainfo *Metainfo, chPeers chan []ipPort)
 		peersMapMutex.Unlock()
 	}
 
-	time.Sleep(time.Duration(interval * int(time.Second)))
-	go keepAliveWithTracker(u, metainfo, chPeers)
+	time.Sleep(time.Duration(interval) * (time.Second))
+	go keepAliveWithTracker(u, metainfo)
 }
