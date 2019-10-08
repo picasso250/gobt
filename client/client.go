@@ -1,24 +1,21 @@
 package main
 
 import (
-	"fmt"
+	"io/ioutil"
 	"log"
-	"os"
+
+	"github.com/picasso250/gobt"
 )
 
 func main() {
-	f, err := os.OpenFile("z", os.O_RDWR|os.O_CREATE, 0664)
+	dat, err := ioutil.ReadFile("..\\b.torrent")
 	if err != nil {
 		log.Fatal(err)
 	}
-	o, err := f.Seek(188, 0)
+	v, err := gobt.Parse(dat)
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Printf("new offset: %d\n", o)
-	n, err := f.Write([]byte("hello"))
-	if err != nil {
-		log.Fatal(err)
-	}
-	fmt.Printf("write: %d\n", n)
+
+	gobt.PrintMetainfo(v.(map[string]interface{}))
 }

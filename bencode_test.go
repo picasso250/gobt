@@ -143,7 +143,7 @@ func TestParse(t *testing.T) {
 }
 
 func TestRealFile(t *testing.T) {
-	dat, err := ioutil.ReadFile("a.torrent")
+	dat, err := ioutil.ReadFile("b.torrent")
 	if err != nil {
 		log.Fatal(err)
 	}
