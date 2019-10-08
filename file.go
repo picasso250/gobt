@@ -36,6 +36,7 @@ func writeToFile(info *MetainfoInfo, index int, offset int64, piece []byte) erro
 	}
 	return writeToOneFile(info, offset, piece)
 }
+
 func writeToOneFile(info *MetainfoInfo, offset int64, piece []byte) error {
 	filename := info.filename()
 	f, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE, 0664)
