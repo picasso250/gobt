@@ -143,6 +143,7 @@ func (p *peer) loop(info *MetainfoInfo) (err error) {
 			// send him message for request
 			// it is safe to goroutine
 			go func() {
+				// todo tit-for-tat-ish algorithm
 				err = requestPeer(p, info)
 				if err != nil {
 					errOccur <- err
