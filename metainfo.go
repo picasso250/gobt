@@ -15,17 +15,28 @@ type Metainfo struct {
 func NewMetainfoFromMap(m map[string]interface{}) *Metainfo {
 	info := m["info"].(map[string]interface{})
 	mi := Metainfo{
-		Announce:   m["announce"].(string),
+		Announce:   string(m["announce"].([]byte)),
 		Info:       NewMetainfoInfoFromMap(info),
 		InfoHash:   infoHash(info),
 		OriginData: m,
 	}
 	if m["announce-list"] != nil {
-		for _, a := range m["announce-list"].([]interface{}) {
-			mi.AnnounceList = append(mi.AnnounceList, a.([]interface{})[0].(string))
+		for _, a := range flat(m["announce-list"].([]interface{})) {
+			mi.AnnounceList = append(mi.AnnounceList, string(a.([]byte)))
 		}
 	}
 	return &mi
+}
+func flat(a []interface{}) []interface{} {
+	ret := make([]interface{}, 0, len(a))
+	for _, v := range a {
+		if v, ok := v.([]interface{}); ok {
+			for _, v2 := range v {
+				ret = append(ret, v2)
+			}
+		}
+	}
+	return ret
 }
 
 // MetainfoInfo metainfo[info]
@@ -41,17 +52,18 @@ type MetainfoInfo struct {
 // NewMetainfoInfoFromMap builds a map
 func NewMetainfoInfoFromMap(m map[string]interface{}) *MetainfoInfo {
 	mi := MetainfoInfo{
-		Name:        m["name"].(string),
+		Name:        string(m["name"].([]byte)),
 		PieceLength: int(m["piece length"].(int64)),
-		Pieces:      []byte(m["pieces"].(string)),
-		Length:      m["length"].(int64),
+		Pieces:      m["pieces"].([]byte),
 		OriginData:  m,
+	}
+	if m["length"] != nil {
+		mi.Length = m["length"].(int64)
 	}
 	if m["files"] != nil {
 		for _, f := range m["files"].([]interface{}) {
 			mi.Files = append(mi.Files, NewFileFromMap(f.(map[string]interface{})))
 		}
-
 	}
 
 	return &mi
@@ -63,7 +75,8 @@ func (info *MetainfoInfo) filename() string {
 	return pathBuild(downloadRoot, info.Name)
 }
 func (info *MetainfoInfo) infofilename() string {
-	return pathBuild(downloadRoot, info.Name+".btinfo")
+	// return pathBuild(downloadRoot, info.Name+".btinfo")
+	return info.Name + ".btinfo"
 }
 func (info *MetainfoInfo) bitfield() (*bitfield, error) {
 	return bitfieldFromFile(info.infofilename())
@@ -85,7 +98,7 @@ type hash [hashSize]byte
 func stringSlice(a []interface{}) []string {
 	b := make([]string, len(a))
 	for i, v := range a {
-		b[i] = v.(string)
+		b[i] = string(v.([]byte))
 	}
 	return b
 }

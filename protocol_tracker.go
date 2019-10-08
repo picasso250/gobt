@@ -148,7 +148,7 @@ func keepAliveWithTracker(u *url.URL, metainfo *Metainfo, chPeers chan []ipPort)
 	}
 	res := r.(map[string]interface{})
 	if res["failure reason"] != nil {
-		fmt.Printf("GET %s failure reason: %s\n", u.String(), res["failure reason"].(string))
+		fmt.Printf("GET %s failure reason: %s\n", u.String(), res["failure reason"].([]byte))
 		return
 	}
 	interval := res["interval"].(int)
@@ -162,7 +162,7 @@ func keepAliveWithTracker(u *url.URL, metainfo *Metainfo, chPeers chan []ipPort)
 		fmt.Printf("unexpected type %T\n", t) // %T prints whatever type t has
 		return
 	case string:
-		pl, err = compactPeerList(peers.(string), piecesCount)
+		pl, err = compactPeerList(peers.([]byte), piecesCount)
 		if err != nil {
 			fmt.Printf("parse compact peer list error: %v\n", err)
 			return

@@ -368,8 +368,7 @@ func uniquePeers(peers []ipPort) []ipPort {
 	}
 	return list
 }
-func compactPeerList(peers string, piecesCount int) ([]*peer, error) {
-	b := []byte(peers)
+func compactPeerList(b []byte, piecesCount int) ([]*peer, error) {
 	ret := make([]*peer, 0)
 	if len(b)%6 != 0 {
 		return nil, errors.New("compact peers is not 6s")
@@ -388,12 +387,12 @@ func peerList(peers map[string]interface{}, piecesCount int) ([]*peer, error) {
 	ret := make([]*peer, 0)
 	for _, p := range peers {
 		pm := p.(map[string]interface{})
-		port, err := strconv.Atoi(pm["port"].(string))
+		port, err := strconv.Atoi(string(pm["port"].([]byte)))
 		if err != nil {
 			return ret, err
 		}
-		ip := StringIPToInt(pm["ip"].(string))
-		pid, err := peerIDFromBytes([]byte(pm["peer id"].(string)))
+		ip := StringIPToInt(string(pm["ip"].([]byte)))
+		pid, err := peerIDFromBytes(pm["peer id"].([]byte))
 		if err != nil {
 			return ret, err
 		}
