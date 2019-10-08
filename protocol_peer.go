@@ -41,9 +41,18 @@ type peer struct {
 
 	Conn           net.Conn
 	Bitfield       *bitfield
-	WillCancel     chan int
-	PieceOffsetMap map[uint32]int // piece start 0----piece offset----piece end
+	Cancel         chan iblPack
+	WillCancel     []iblPack
+	PieceOffsetMap map[uint32]int     // piece start 0----piece offset----piece end
+	ToSend         chan messageToSend // send to peer
+	Error          chan error
 }
+type messageToSend struct {
+	Request iblPack
+	Message []byte
+}
+
+type iblPack []byte // pack index, begin, and length to bytes
 
 func newPeer(ip uint32, port uint16, pid peerID, bitfieldSize int) *peer {
 	return &peer{
@@ -56,9 +65,10 @@ func newPeer(ip uint32, port uint16, pid peerID, bitfieldSize int) *peer {
 		PeerChoking:    1,
 		PeerInterested: 0,
 
-		Conn:       nil, // Multiple goroutines may invoke methods on a Conn simultaneously
-		Bitfield:   allZeroBitField(bitfieldSize),
-		WillCancel: make(chan int),
+		Conn:     nil, // Multiple goroutines may invoke methods on a Conn simultaneously
+		Bitfield: allZeroBitField(bitfieldSize),
+		Cancel:   make(chan iblPack, 10),
+		ToSend:   make(chan messageToSend, 10),
 	}
 }
 func (p *peer) Uint64() uint64 {
@@ -69,7 +79,7 @@ func (p *peer) String() string {
 	return IPIntToString(int(p.IP)) + ":" + strconv.Itoa(int(p.Port))
 }
 
-func (p *peer) start(metainfo *Metainfo) {
+func (p *peer) startListen(metainfo *Metainfo) {
 	var err error
 
 	// maybe we don't need to lock here, but who knows
@@ -129,6 +139,61 @@ func (p *peer) peerMessages(info *MetainfoInfo) error {
 
 	return p.loop(info)
 }
+
+func (p *peer) startSend(metainfo *Metainfo) {
+	// these two are goroutine safe
+	conn := p.Conn
+
+	for {
+
+		select {
+
+		case msg := <-p.ToSend:
+			if is, willCancel := inCancel(msg.Request, p.WillCancel); is {
+				// drop this message
+				p.WillCancel = willCancel
+			} else {
+				err := writeMessage(conn, msg.Message)
+				if err != nil {
+					p.Error <- err
+					return
+				}
+			}
+
+		case c := <-p.Cancel:
+			p.WillCancel = append(p.WillCancel, c)
+		}
+
+	}
+}
+func writeMessage(conn net.Conn, msg []byte) error {
+	b := msgWrap(msg)
+	return writeAll(conn, b)
+}
+func inCancel(elem iblPack, list []iblPack) (bool, []iblPack) {
+	for i, v := range list {
+		if bytes.Equal(v, elem) {
+			return true, append(list[:i], list[i+1:]...)
+		}
+	}
+	return false, list
+}
+
+func packCancel(index int32, begin int32, length int32) []byte {
+	b, err := packMessage(nil, index, begin, length)
+	if err != nil {
+		log.Fatal(err)
+	}
+	return b
+}
+func msgWrap(msg []byte) []byte {
+	buf := new(bytes.Buffer)
+	err := writeAll(buf, msg)
+	if err != nil {
+		log.Fatal(err)
+	}
+	return buf.Bytes()
+}
 func (p *peer) loop(info *MetainfoInfo) (err error) {
 	errOccur := make(chan error)
 	for {
@@ -180,7 +245,7 @@ func (p *peer) loop(info *MetainfoInfo) (err error) {
 		case typeRequest:
 			err = p.doRequest(b, info, errOccur)
 		case typeCancel:
-			p.doCancel()
+			p.doCancel(b)
 		case typePiece:
 			err = p.doPiece(b, info)
 		}
@@ -239,10 +304,12 @@ func (p *peer) doPiece(b []byte, info *MetainfoInfo) (err error) {
 	return nil
 }
 
-func (p *peer) doCancel() {
-	p.WillCancel <- 1
+func (p *peer) doCancel(b []byte) {
+	p.Cancel <- b
 }
 func (p *peer) doRequest(b []byte, info *MetainfoInfo, errOccur chan error) error {
+	cancelFlag := b[:3*4]
+
 	buf := bytes.NewBuffer(b)
 	index, err := readUint32(buf)
 	if err != nil {
@@ -260,10 +327,16 @@ func (p *peer) doRequest(b []byte, info *MetainfoInfo, errOccur chan error) erro
 	// if we have
 	if gBitField.Bit(int(index)) == 1 {
 
-		b, err := readSomeFileContent(info, int(index), int64(begin), int64(length))
+		piece, err := readSomeFileContent(info, int(index), int64(begin), int64(length))
 		if err != nil {
 			return err
 		}
+		// 'piece' messages contain an index, begin, and piece
+		b, err := packMessage(piece, int32(typePiece), int32(begin), int32(length))
+		if err != nil {
+			return err
+		}
+		p.ToSend <- messageToSend{cancelFlag, b}
 
 		go func() {
 			err = p.sendTypeMessageWhile(typePiece, (b))
@@ -281,7 +354,7 @@ func (p *peer) sendTypeMessageWhile(t uint32, msg []byte) error {
 
 	// these two are goroutine safe
 	conn := p.Conn
-	willCancel := p.WillCancel
+	willCancel := p.Cancel
 
 	err := writeIntegers(conn, uint32(len(msg)+4), t)
 	if err != nil {
@@ -427,6 +500,20 @@ func sendMessage(conn net.Conn, msg *bytes.Buffer) error {
 		log.Fatal("write message length not enough")
 	}
 	return nil
+}
+
+// pack ints and bytes
+func packMessage(b []byte, is ...int32) ([]byte, error) {
+	buf := bytes.NewBuffer(b)
+	err := writeIntegers(buf, is)
+	if err != nil {
+		return nil, err
+	}
+	err = writeAll(buf, b)
+	if err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
 }
 
 func sendTypeMessage(conn net.Conn, t uint32, msg *bytes.Buffer) error {
