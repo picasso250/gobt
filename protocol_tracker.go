@@ -37,11 +37,11 @@ type TrackerResponse struct {
 }
 
 // NewTrackerRequest new a tracker request with current bt file
-func NewTrackerRequest(mi *Metainfo) *TrackerRequest {
+func NewTrackerRequest(mi *Metainfo, port uint16) *TrackerRequest {
 	r := TrackerRequest{
 		InfoHash:   mi.InfoHash,
 		PeerID:     myPeerID,
-		Port:       availablePort(),
+		Port:       port,
 		Uploaded:   0,
 		Downloaded: 0,
 		Left:       gBitField.left() * uint64(mi.Info.PieceLength),
@@ -66,7 +66,7 @@ func (r *TrackerRequest) Query() url.Values {
 var trackerMap map[string]bool // state of tracker
 var trackerMapMutex sync.RWMutex
 
-func trackerProtocol(metainfo *Metainfo) {
+func trackerProtocol(metainfo *Metainfo, port uint16) {
 	allAnnounce := getAllAnnounce(metainfo)
 	for _, announce := range allAnnounce {
 		u, err := url.Parse(announce)
@@ -80,11 +80,11 @@ func trackerProtocol(metainfo *Metainfo) {
 			continue
 		}
 
-		go keepAliveWithTracker(u, metainfo)
+		go keepAliveWithTracker(u, metainfo, port)
 	}
 }
-func keepAliveWithTracker(u *url.URL, metainfo *Metainfo) {
-	q := NewTrackerRequest(metainfo).Query()
+func keepAliveWithTracker(u *url.URL, metainfo *Metainfo, port uint16) {
+	q := NewTrackerRequest(metainfo, port).Query()
 	u.RawQuery = q.Encode()
 	var body []byte
 	if doNotBotherTracker { // for debug
@@ -186,5 +186,5 @@ func keepAliveWithTracker(u *url.URL, metainfo *Metainfo) {
 	}
 
 	time.Sleep(time.Duration(interval) * (time.Second))
-	go keepAliveWithTracker(u, metainfo)
+	go keepAliveWithTracker(u, metainfo, port)
 }
