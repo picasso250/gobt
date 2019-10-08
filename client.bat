@@ -1,3 +1,4 @@
 cd client
 go build
-client.exe
+cd ..
+client\client.exe
