@@ -87,7 +87,7 @@ func (info *MetainfoInfo) piecesCount() int {
 	return len([]byte(info.Pieces)) / hashSize
 }
 func (info *MetainfoInfo) filename() string {
-	return buildPath(downloadRoot, info.Name)
+	return buildPath(DownloadRoot, info.Name)
 }
 func (info *MetainfoInfo) infoFilename() string {
 	return info.filename() + ".btinfo"

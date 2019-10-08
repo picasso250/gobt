@@ -23,13 +23,15 @@ const peerIDSize = 20
 
 // settings
 var maxPeerCount int
-var downloadRoot string
+
+// DownloadRoot root directory of download
+var DownloadRoot string
 
 func init() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 
 	maxPeerCount = *flag.Int("max-peer-count", 30, "how many peers to connect")
-	downloadRoot = *flag.String("root", ".", "download root directory")
+	DownloadRoot = *flag.String("root", ".", "download root directory")
 
 	myPeerID = genPeerID()
 	gPeersToStart = make(chan *peer, 10)
@@ -352,11 +354,13 @@ func Download(filename string) {
 	trackerProtocol(metaInfo, port)
 
 	go func() {
+		fmt.Printf("Listening...\n")
 		for {
 			conn, err := ln.Accept()
 			if err != nil {
 				log.Fatal(err)
 			}
+			fmt.Printf("connection comes from %s\n", conn.RemoteAddr())
 			go handleConnection(conn, metaInfo)
 		}
 	}()
@@ -367,6 +371,7 @@ func Download(filename string) {
 
 		peersMapMutex.RLock()
 		if peersMap[peer.String()] == nil {
+			fmt.Printf("start peer %s\n", peer.String())
 			peersMap[peer.String()] = peer
 			go peer.startHandle(metaInfo)
 		}

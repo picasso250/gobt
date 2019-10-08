@@ -541,6 +541,7 @@ func buildPeerMessageBitfield(info *MetainfoInfo) ([]byte, error) {
 }
 
 func handshake(p *peer, metainfo *Metainfo) error {
+	fmt.Printf("handshake with peer %s\n", p.Addr.String())
 	conn := p.Conn
 
 	// The handshake starts with character ninteen (decimal) followed by the string 'BitTorrent protocol'

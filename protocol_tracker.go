@@ -84,6 +84,7 @@ func trackerProtocol(metainfo *Metainfo, port uint16) {
 	}
 }
 func keepAliveWithTracker(u *url.URL, metainfo *Metainfo, port uint16) {
+	fmt.Printf("connect to tracker %s\n", u.String())
 	q := NewTrackerRequest(metainfo, port).Query()
 	u.RawQuery = q.Encode()
 	var body []byte
@@ -173,6 +174,7 @@ func keepAliveWithTracker(u *url.URL, metainfo *Metainfo, port uint16) {
 			return
 		}
 	}
+	fmt.Printf("got %d peers\n", len(pl))
 
 	// todo limit the number of peers
 	if len(pl) != 0 {

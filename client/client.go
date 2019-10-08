@@ -15,5 +15,6 @@ func main() {
 	// }
 
 	// gobt.PrintMetainfo(v.(map[string]interface{}))
+	gobt.DownloadRoot = ".debug"
 	gobt.Download("Mutant.Year.Zero.Road.to.Eden.Seed.of.Evil.torrent")
 }
