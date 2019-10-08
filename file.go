@@ -119,7 +119,7 @@ func pathBuild(path ...string) string {
 	return strings.Join(path, string([]rune([]rune{os.PathSeparator})))
 }
 func ensureFiles(info *MetainfoInfo) (bf *bitfield, err error) {
-	filename := info.filename()
+	filename := info.Name
 	if _, err := os.Stat(filename); os.IsNotExist(err) {
 		err := os.Mkdir(filename, 0664)
 		if err != nil {
@@ -133,14 +133,14 @@ func ensureFiles(info *MetainfoInfo) (bf *bitfield, err error) {
 
 	for _, file := range info.Files {
 		path := file.Path
-		prefix := string(append([]rune(filename), os.PathSeparator))
+		prefix := string(append([]rune("."), os.PathSeparator))
 		err := ensureFileOneByPathList(prefix, path)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	return ensureInfoFile(info.infofilename(), info.piecesCount())
+	return ensureInfoFile(info.Name+".btinfo", info.piecesCount())
 }
 func ensureInfoFile(infoFilename string, piecesCount int) (bf *bitfield, err error) {
 	if _, err := os.Stat(infoFilename); os.IsNotExist(err) {
