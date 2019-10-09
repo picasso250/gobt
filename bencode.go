@@ -10,10 +10,6 @@ import (
 	"strconv"
 )
 
-// PrintMetainfo print the metainfo
-func PrintMetainfo(m map[string]interface{}) {
-	valueToString(m, "pieces")
-}
 func valueToString(v interface{}, bytesKey ...string) string {
 	v = prepareValueIter(v, bytesKey...)
 	b := new(bytes.Buffer)
