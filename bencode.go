@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"reflect"
 	"sort"
 	"strconv"
@@ -15,13 +14,15 @@ import (
 
 // PrintMetainfo print the metainfo
 func PrintMetainfo(m map[string]interface{}) {
-	printValue(m, "pieces")
+	valueToString(m, "pieces")
 }
-func printValue(v interface{}, bytesKey ...string) {
+func valueToString(v interface{}, bytesKey ...string) string {
 	v = prepareValueIter(v, bytesKey...)
-	e := json.NewEncoder(os.Stdout)
+	b := new(bytes.Buffer)
+	e := json.NewEncoder(b)
 	e.SetIndent("", "  ")
 	e.Encode(v)
+	return b.String()
 }
 func prepareValueIter(v interface{}, bytesKey ...string) interface{} {
 	m := make(map[string]bool, len(bytesKey))
