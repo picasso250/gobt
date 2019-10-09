@@ -7,7 +7,7 @@ func init() {
 }
 
 func TestEnsureFile(t *testing.T) {
-	mi, err := newMetainfoFromFile("a.txt.torrent")
+	mi, err := NewMetainfoFromFile("a.txt.torrent")
 	if err != nil {
 		t.Errorf("parse file error: %v", err)
 	}
@@ -22,7 +22,7 @@ func TestEnsureFile(t *testing.T) {
 	}
 }
 func TestEnsureFiles(t *testing.T) {
-	mi, err := newMetainfoFromFile("b.torrent")
+	mi, err := NewMetainfoFromFile("b.torrent")
 	if err != nil {
 		t.Errorf("parse file error: %v", err)
 	}

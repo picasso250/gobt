@@ -333,7 +333,7 @@ func (i ipPort) String() string {
 // Download download BT file
 func Download(filename string) {
 
-	metaInfo, err := newMetainfoFromFile(filename)
+	metaInfo, err := NewMetainfoFromFile(filename)
 	if err != nil {
 		fmt.Printf("parse bt file error: %s\n", err)
 		return

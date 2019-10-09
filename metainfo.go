@@ -30,7 +30,9 @@ func NewMetainfoFromMap(m map[string]interface{}) *Metainfo {
 	}
 	return &mi
 }
-func newMetainfoFromFile(filename string) (*Metainfo, error) {
+
+// NewMetainfoFromFile read file and return metainfo
+func NewMetainfoFromFile(filename string) (*Metainfo, error) {
 	dat, err := ioutil.ReadFile(filename)
 	if err != nil {
 		return nil, err
