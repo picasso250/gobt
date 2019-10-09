@@ -18,10 +18,12 @@ type Metainfo struct {
 func NewMetainfoFromMap(m map[string]interface{}) *Metainfo {
 	info := m["info"].(map[string]interface{})
 	mi := Metainfo{
-		Announce:   string(m["announce"].([]byte)),
 		Info:       NewMetainfoInfoFromMap(info),
 		InfoHash:   infoHash(info),
 		OriginData: m,
+	}
+	if m["announce"] != nil {
+		mi.Announce = string(m["announce"].([]byte))
 	}
 	if m["announce-list"] != nil {
 		for _, a := range flat(m["announce-list"].([]interface{})) {
