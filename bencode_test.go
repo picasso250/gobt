@@ -17,7 +17,7 @@ func TestValueToString(t *testing.T) {
 	if _, ok := v.(map[string]interface{})["info"].(map[string]interface{})["pieces"].(string); !ok {
 		t.Errorf("pieces not to hex")
 	}
-	// t.Errorf("%s",valueToString(m.OriginData, "pieces"))
+	// t.Errorf("%s", valueToString(m.OriginData, "pieces"))
 }
 func TestEncode(t *testing.T) {
 	str := "spam"
