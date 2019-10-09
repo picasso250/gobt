@@ -11,6 +11,7 @@ import (
 
 func main() {
 
+	flag.Parse()
 	if flag.NArg() < 1 {
 		fmt.Fprintf(os.Stderr, "Usage: %s <bt_file>\n", os.Args[0])
 		return
