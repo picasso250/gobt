@@ -5,11 +5,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"reflect"
 	"sort"
 	"strconv"
-	"unicode"
 )
 
 // PrintMetainfo print the metainfo
@@ -59,20 +57,7 @@ func toHex(src []byte) string {
 	hex.Encode(dst, src)
 	return string(dst)
 }
-func printStringln(b []byte) {
-	if isPrint(b) {
-		fmt.Println(string(b))
-	} else {
-		fmt.Println(b)
-	}
-}
-func printString(b []byte) {
-	if isPrint(b) {
-		fmt.Print(string(b))
-	} else {
-		fmt.Print(b)
-	}
-}
+
 func toStringSlice(v []interface{}) []string {
 	ret := make([]string, len(v))
 	for i, v := range v {
@@ -80,14 +65,8 @@ func toStringSlice(v []interface{}) []string {
 	}
 	return ret
 }
-func isPrint(b []byte) bool {
-	for _, c := range []rune(string(b)) {
-		if !unicode.IsPrint(c) {
-			return false
-		}
-	}
-	return true
-}
+
+// note: isPrint or isGraphic not working
 
 // Encode bencoding
 func Encode(v interface{}) ([]byte, error) {
