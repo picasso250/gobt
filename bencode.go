@@ -2,9 +2,10 @@ package gobt
 
 import (
 	"bytes"
-	"encoding/hex"
+	"crypto/md5"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"reflect"
 	"sort"
 	"strconv"
@@ -49,9 +50,8 @@ func prepareValueIter(v interface{}, bytesKey ...string) interface{} {
 	}
 }
 func toHex(src []byte) string {
-	dst := make([]byte, hex.EncodedLen(len(src)))
-	hex.Encode(dst, src)
-	return string(dst)
+	short := src[:20]
+	return fmt.Sprintf("%x... (length:%d, MD5:%x)", short, len(src), md5.Sum(src))
 }
 
 func toStringSlice(v []interface{}) []string {
