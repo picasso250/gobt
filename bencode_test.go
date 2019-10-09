@@ -44,8 +44,10 @@ func TestEncode(t *testing.T) {
 		t.Errorf("list encode fail")
 	}
 
+}
+func TestEncodeDictionary(t *testing.T) {
 	dictionary := map[string]interface{}{"cow": "moo", "spam": "eggs"}
-	b, err = Encode(dictionary)
+	b, err := Encode(dictionary)
 	if err != nil {
 		t.Errorf("dictionary encode error")
 	}
