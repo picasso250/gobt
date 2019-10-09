@@ -46,7 +46,7 @@ func NewMetainfoFromFile(filename string) (*Metainfo, error) {
 	return NewMetainfoFromMap(vv.(map[string]interface{})), nil
 }
 func (m *Metainfo) String() string {
-	return valueToString(m.OriginData)
+	return valueToString(m.OriginData, "pieces")
 }
 func flat(a []interface{}) []interface{} {
 	ret := make([]interface{}, 0, len(a))
