@@ -8,6 +8,17 @@ import (
 	"testing"
 )
 
+func TestValueToString(t *testing.T) {
+	m, err := NewMetainfoFromFile("a.txt.torrent")
+	if err != nil {
+		t.Errorf("metainfo %s", err)
+	}
+	v := prepareValueIter(m.OriginData, "pieces")
+	if _, ok := v.(map[string]interface{})["info"].(map[string]interface{})["pieces"].(string); !ok {
+		t.Errorf("pieces not to hex")
+	}
+	// t.Errorf("%s",valueToString(m.OriginData, "pieces"))
+}
 func TestEncode(t *testing.T) {
 	str := "spam"
 	b, err := Encode(str)
@@ -170,5 +181,4 @@ func TestRealFile(t *testing.T) {
 	if info["length"] == nil && info["files"] == nil {
 		t.Errorf("info no length and files")
 	}
-	PrintMetainfo(v)
 }
